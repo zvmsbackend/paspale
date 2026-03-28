@@ -1,0 +1,9 @@
+{
+  "name": "sennenki/paspale",
+  "version": "0.1.0",
+  "readme": "README.mbt.md",
+  "repository": "https://github.com/zvmsbackend/paspale",
+  "license": "Apache-2.0",
+  "keywords": ["compiler", "pascal", "language"],
+  "description": "A MoonBit implementation of the Pascal programming language."
+}
