@@ -1,7 +1,0 @@
-// import {
-//   "sennenki/paspale" @lib,
-// }
-
-options(
-  "is-main": true,
-)

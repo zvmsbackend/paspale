@@ -5,5 +5,6 @@
   "repository": "https://github.com/zvmsbackend/paspale",
   "license": "Apache-2.0",
   "keywords": ["compiler", "pascal", "language"],
-  "description": "A MoonBit implementation of the Pascal programming language."
+  "description": "A MoonBit implementation of the Pascal programming language.",
+  "source": "src"
 }
