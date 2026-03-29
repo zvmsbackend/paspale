@@ -2,10 +2,63 @@
 package "sennenki/paspale/diag"
 
 // Values
+pub fn new_sink() -> DiagSink
+
+pub fn new_source_map() -> SourceMap
+
+pub fn render_all(SourceMap, DiagSink) -> String
 
 // Errors
 
 // Types and methods
+type DiagSink
+pub fn DiagSink::all(Self) -> Array[Diagnostic]
+pub fn DiagSink::has_error(Self) -> Bool
+pub fn DiagSink::len(Self) -> Int
+pub fn DiagSink::push(Self, Diagnostic) -> Unit
+
+pub(all) struct Diagnostic {
+  severity : Severity
+  code : String
+  message : String
+  labels : Array[Label]
+  notes : Array[String]
+  helps : Array[String]
+}
+pub fn Diagnostic::new(Severity, String, String) -> Self
+pub fn Diagnostic::render(Self, SourceMap) -> String
+pub fn Diagnostic::with_help(Self, String) -> Self
+pub fn Diagnostic::with_label(Self, Label) -> Self
+pub fn Diagnostic::with_note(Self, String) -> Self
+
+pub(all) struct Label {
+  span : Span
+  message : String
+  is_primary : Bool
+}
+pub fn Label::primary(Span, String) -> Self
+pub fn Label::secondary(Span, String) -> Self
+
+pub(all) enum Severity {
+  Error
+  Warning
+  Note
+}
+pub impl Show for Severity
+
+type SourceMap
+pub fn SourceMap::add_file(Self, String, String) -> Int
+pub fn SourceMap::line_col(Self, Int, Int) -> (Int, Int)
+pub fn SourceMap::line_text(Self, Int, Int) -> String
+pub fn SourceMap::path(Self, Int) -> String
+
+pub struct Span {
+  file_id : Int
+  start : Int
+  end_ : Int
+}
+pub fn Span::len(Self) -> Int
+pub fn Span::new(Int, Int, Int) -> Self
 
 // Type aliases
 
