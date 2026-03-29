@@ -1,0 +1,96 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "sennenki/paspale/semantic"
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) enum BuiltinType {
+  Void
+  Integer
+  Real
+  Boolean
+  Char
+  String
+} derive(Eq, Show)
+
+pub(all) struct FieldDef {
+  name : String
+  ty : TypeRef
+} derive(Eq, Show)
+
+pub(all) enum Type {
+  Builtin(BuiltinType)
+  Pointer(TypeRef)
+  StaticArray(TypeRef, Int, Int, TypeRef)
+  OpenArray(TypeRef)
+  DynamicArray(TypeRef)
+  Record(Array[FieldDef])
+  Enum(Array[String])
+  Subrange(TypeRef, Int, Int)
+  Set(TypeRef)
+  Proc(Array[TypeRef], TypeRef?)
+  Forward(String)
+  Error
+} derive(Eq, Show)
+
+pub struct TypeRef {
+  id : Int
+} derive(Eq, Show)
+pub fn TypeRef::eq(Self, Self) -> Bool
+
+type TypeRegistry
+pub fn TypeRegistry::array_element_type(Self, TypeRef) -> TypeRef?
+pub fn TypeRegistry::boolean_type(Self) -> TypeRef
+pub fn TypeRegistry::char_type(Self) -> TypeRef
+pub fn TypeRegistry::create_dynamic_array(Self, TypeRef) -> TypeRef?
+pub fn TypeRegistry::create_enum(Self, Array[String]) -> TypeRef?
+pub fn TypeRegistry::create_open_array(Self, TypeRef) -> TypeRef?
+pub fn TypeRegistry::create_pointer(Self, TypeRef) -> TypeRef?
+pub fn TypeRegistry::create_proc(Self, Array[TypeRef], TypeRef?) -> TypeRef?
+pub fn TypeRegistry::create_record(Self, Array[FieldDef]) -> TypeRef?
+pub fn TypeRegistry::create_set(Self, TypeRef) -> TypeRef?
+pub fn TypeRegistry::create_static_array(Self, TypeRef, Int, Int, TypeRef) -> TypeRef?
+pub fn TypeRegistry::create_subrange(Self, TypeRef, Int, Int) -> TypeRef?
+pub fn TypeRegistry::get(Self, TypeRef) -> Type
+pub fn TypeRegistry::has_unresolved(Self) -> Bool
+pub fn TypeRegistry::integer_type(Self) -> TypeRef
+pub fn TypeRegistry::is_array(Self, TypeRef) -> Bool
+pub fn TypeRegistry::is_assignable_from(Self, TypeRef, TypeRef) -> Bool
+pub fn TypeRegistry::is_boolean(Self, TypeRef) -> Bool
+pub fn TypeRegistry::is_compatible_with(Self, TypeRef, TypeRef) -> Bool
+pub fn TypeRegistry::is_dynamic_array(Self, TypeRef) -> Bool
+pub fn TypeRegistry::is_numeric(Self, TypeRef) -> Bool
+pub fn TypeRegistry::is_open_array(Self, TypeRef) -> Bool
+pub fn TypeRegistry::is_ordinal(Self, TypeRef) -> Bool
+pub fn TypeRegistry::is_record(Self, TypeRef) -> Bool
+pub fn TypeRegistry::is_resolved(Self, TypeRef) -> Bool
+pub fn TypeRegistry::is_static_array(Self, TypeRef) -> Bool
+pub fn TypeRegistry::is_string(Self, TypeRef) -> Bool
+pub fn TypeRegistry::is_valid(Self, TypeRef) -> Bool
+pub fn TypeRegistry::make_dynamic_array(Self, TypeRef) -> TypeRef
+pub fn TypeRegistry::make_enum(Self, Array[String]) -> TypeRef
+pub fn TypeRegistry::make_forward(Self, String) -> TypeRef
+pub fn TypeRegistry::make_open_array(Self, TypeRef) -> TypeRef
+pub fn TypeRegistry::make_pointer(Self, TypeRef) -> TypeRef
+pub fn TypeRegistry::make_proc(Self, Array[TypeRef], TypeRef?) -> TypeRef
+pub fn TypeRegistry::make_record(Self, Array[FieldDef]) -> TypeRef
+pub fn TypeRegistry::make_set(Self, TypeRef) -> TypeRef
+pub fn TypeRegistry::make_static_array(Self, TypeRef, Int, Int, TypeRef) -> TypeRef
+pub fn TypeRegistry::make_subrange(Self, TypeRef, Int, Int) -> TypeRef
+pub fn TypeRegistry::new() -> Self
+pub fn TypeRegistry::real_type(Self) -> TypeRef
+pub fn TypeRegistry::record_fields(Self, TypeRef) -> Array[FieldDef]?
+pub fn TypeRegistry::register(Self, Type) -> TypeRef
+pub fn TypeRegistry::resolve_forward(Self, String, Type) -> Int
+pub fn TypeRegistry::set(Self, TypeRef, Type) -> Unit
+pub fn TypeRegistry::static_array_bounds(Self, TypeRef) -> (Int, Int)?
+pub fn TypeRegistry::string_type(Self) -> TypeRef
+pub fn TypeRegistry::unresolved_names(Self) -> Array[String]
+pub fn TypeRegistry::void_type(Self) -> TypeRef
+
+// Type aliases
+
+// Traits
+
