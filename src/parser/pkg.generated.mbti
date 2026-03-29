@@ -1,11 +1,26 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "sennenki/paspale/parser"
 
+import {
+  "sennenki/paspale/ast",
+  "sennenki/paspale/diag",
+  "sennenki/paspale/lexer",
+}
+
 // Values
+pub fn parse_expr_text(Int, String, @diag.DiagSink) -> @ast.Spanned[@ast.Expr]
+
+pub fn parse_expr_tokens(Array[@lexer.SpannedToken], @diag.DiagSink) -> @ast.Spanned[@ast.Expr]
+
+pub fn parse_text(Int, String, @diag.DiagSink) -> @ast.Spanned[@ast.CompilationUnit]
+
+pub fn parse_tokens(Int, Array[@lexer.SpannedToken], @diag.DiagSink) -> @ast.Spanned[@ast.CompilationUnit]
 
 // Errors
 
 // Types and methods
+type Parser
+pub fn Parser::parse_expr(Self) -> @ast.Spanned[@ast.Expr]
 
 // Type aliases
 
