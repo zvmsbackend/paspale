@@ -110,7 +110,7 @@ test "lexer span monotonic" {
   let sink = @diag.new_sink()
   let tokens = @lexer.tokenize(0, "ab\nx:=1", sink)
   for i in 1..<tokens.length() {
-    assert_true(tokens[i - 1].span.end_ <= tokens[i].span.start)
+    assert_true(tokens[i - 1].span.end <= tokens[i].span.start)
   }
   assert_eq(sink.len(), 0)
 }

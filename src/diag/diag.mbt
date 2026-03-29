@@ -2,18 +2,18 @@
 pub struct Span {
   file_id : Int
   start : Int
-  end_ : Int
-}
+  end : Int
+} derive(Show, Eq)
 
 ///|
-pub fn Span::new(file_id : Int, start : Int, end_ : Int) -> Span {
-  { file_id, start, end_ }
+pub fn Span::new(file_id : Int, start : Int, end : Int) -> Span {
+  { file_id, start, end }
 }
 
 ///|
 pub fn Span::len(self : Span) -> Int {
-  if self.end_ > self.start {
-    self.end_ - self.start
+  if self.end > self.start {
+    self.end - self.start
   } else {
     0
   }

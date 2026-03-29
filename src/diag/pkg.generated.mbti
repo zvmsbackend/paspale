@@ -55,8 +55,8 @@ pub fn SourceMap::path(Self, Int) -> String
 pub struct Span {
   file_id : Int
   start : Int
-  end_ : Int
-}
+  end : Int
+} derive(Eq, Show)
 pub fn Span::len(Self) -> Int
 pub fn Span::new(Int, Int, Int) -> Self
 
