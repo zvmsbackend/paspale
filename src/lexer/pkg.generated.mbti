@@ -1,11 +1,129 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "sennenki/paspale/lexer"
 
+import {
+  "sennenki/paspale/diag",
+}
+
 // Values
+pub fn tokenize(Int, String, @diag.DiagSink) -> Array[SpannedToken]
 
 // Errors
 
 // Types and methods
+pub struct SpannedToken {
+  token : Token
+  span : @diag.Span
+}
+pub fn SpannedToken::kind(Self) -> TokenKind
+pub fn SpannedToken::new(Token, @diag.Span) -> Self
+
+pub(all) enum Token {
+  Eof
+  Identifier(String)
+  IntConst(String)
+  RealConst(String)
+  StringConst(String)
+  KwProgram
+  KwUnit
+  KwUses
+  KwVar
+  KwConst
+  KwType
+  KwBegin
+  KwEnd
+  KwProcedure
+  KwFunction
+  KwIf
+  KwThen
+  KwElse
+  KwWhile
+  KwDo
+  KwFor
+  KwTo
+  KwDownto
+  KwRepeat
+  KwUntil
+  KwCase
+  KwOf
+  Plus
+  Minus
+  Star
+  Slash
+  Equal
+  Lt
+  Gt
+  Lte
+  Gte
+  NotEqual
+  Assign
+  Colon
+  Semicolon
+  Comma
+  Dot
+  DotDot
+  DotDotDot
+  LParen
+  RParen
+  LBracket
+  RBracket
+  Caret
+  At
+} derive(Eq, Show)
+pub fn Token::kind(Self) -> TokenKind
+
+pub(all) enum TokenKind {
+  Eof
+  Identifier
+  IntConst
+  RealConst
+  StringConst
+  KwProgram
+  KwUnit
+  KwUses
+  KwVar
+  KwConst
+  KwType
+  KwBegin
+  KwEnd
+  KwProcedure
+  KwFunction
+  KwIf
+  KwThen
+  KwElse
+  KwWhile
+  KwDo
+  KwFor
+  KwTo
+  KwDownto
+  KwRepeat
+  KwUntil
+  KwCase
+  KwOf
+  Plus
+  Minus
+  Star
+  Slash
+  Equal
+  Lt
+  Gt
+  Lte
+  Gte
+  NotEqual
+  Assign
+  Colon
+  Semicolon
+  Comma
+  Dot
+  DotDot
+  DotDotDot
+  LParen
+  RParen
+  LBracket
+  RBracket
+  Caret
+  At
+} derive(Eq, Show)
 
 // Type aliases
 
