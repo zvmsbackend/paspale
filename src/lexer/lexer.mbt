@@ -73,7 +73,7 @@ fn read_string_literal(rest : StringView) -> (Int, Bool) {
       return (i, false)
     }
     if c == '\'' {
-      if i + 1 < rest.char_length() && rest.get_char(i + 1) == Some('\'') {
+      if i + 1 < rest.char_length() && rest.get_char(i + 1) is Some('\'') {
         continue i + 2
       }
       return (i + 1, true)
@@ -93,7 +93,7 @@ fn decode_pascal_string(quoted : StringView) -> String {
     }
     if c == '\'' &&
       i + 1 < quoted.char_length() - 1 &&
-      quoted.get_char(i + 1) == Some('\'') {
+      quoted.get_char(i + 1) is Some('\'') {
       out.write_char('\'')
       continue i + 2
     }

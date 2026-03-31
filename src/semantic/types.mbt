@@ -396,9 +396,10 @@ pub fn TypeRegistry::make_forward(
   name : String,
 ) -> TypeRef {
   let tref = self.register(Forward(name))
-  match self.unresolved_forwards.get(name) {
-    Some(refs) => refs.push(tref)
-    None => self.unresolved_forwards.set(name, [tref])
+  if self.unresolved_forwards.get(name) is Some(refs) {
+    refs.push(tref)
+  } else {
+    self.unresolved_forwards.set(name, [tref])
   }
   tref
 }

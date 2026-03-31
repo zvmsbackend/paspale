@@ -119,7 +119,7 @@ fn Resolver::resolve_call(
       } else {
         arg_types.length()
       }
-      for i = 0; i < n; i = i + 1 {
+      for i in 0..<n {
         if !self.types.is_assignable_from(params[i], arg_types[i]) {
           push_error(
             self.sink,
@@ -347,10 +347,9 @@ fn Resolver::pop_return_type(self : Resolver) -> Unit {
 
 ///|
 fn Resolver::current_return_type(self : Resolver) -> TypeRef? {
-  if self.return_type_stack.length() == 0 {
-    None
-  } else {
-    self.return_type_stack[self.return_type_stack.length() - 1]
+  match self.return_type_stack {
+    [] => None
+    [..] => self.return_type_stack[self.return_type_stack.length() - 1]
   }
 }
 
@@ -520,7 +519,7 @@ fn Resolver::int_bound_value(
 ) -> Int? {
   match e.node {
     @ast.Literal(@ast.Int(v)) =>
-      Some(@string.parse_int(v)) catch {
+      (v |> @string.parse_int |> Some) catch {
         _ => {
           push_error(
             self.sink,
@@ -706,8 +705,7 @@ fn Resolver::resolve_stmt(self : Resolver, s : @ast.Spanned[@ast.Stmt]) -> Unit 
     }
     @ast.While(cond, body) => {
       let cty = self.infer_expr_type(cond)
-      self.expect_boolean(cty, cond.span)
-      self.resolve_stmt(body)
+      self..expect_boolean(cty, cond.span).resolve_stmt(body)
     }
     @ast.RepeatUntil(stmts, cond) => {
       for st in stmts {
@@ -744,15 +742,9 @@ fn Resolver::resolve_stmt(self : Resolver, s : @ast.Spanned[@ast.Stmt]) -> Unit 
       self.resolve_stmt(try_s)
       for h in handlers {
         self.enter_scope() |> ignore
-        match h.node.name {
-          Some(name) => {
-            let hty = match h.node.ty {
-              Some(tyexpr) => Some(self.resolve_type_expr(tyexpr))
-              None => None
-            }
-            let _ = self.define_symbol(name, Var, hty, h.span)
-          }
-          None => ()
+        if h.node.name is Some(name) {
+          let hty = h.node.ty.map(tyexpr => self.resolve_type_expr(tyexpr))
+          self.define_symbol(name, Var, hty, h.span) |> ignore
         }
         self.resolve_stmt(h.node.body)
         self.leave_scope()
@@ -762,10 +754,8 @@ fn Resolver::resolve_stmt(self : Resolver, s : @ast.Spanned[@ast.Stmt]) -> Unit 
         None => ()
       }
     }
-    @ast.TryFinally(try_s, finally_s) => {
-      self.resolve_stmt(try_s)
-      self.resolve_stmt(finally_s)
-    }
+    @ast.TryFinally(try_s, finally_s) =>
+      self..resolve_stmt(try_s).resolve_stmt(finally_s)
     @ast.Raise(expr) =>
       match expr {
         Some(e) => {
@@ -888,9 +878,7 @@ fn Resolver::resolve_decl(self : Resolver, d : @ast.Spanned[@ast.Decl]) -> Unit 
             }
           }
           let _ = self.define_symbol("Result", Var, Some(ret), d.span)
-          self.resolve_block(body)
-          self.leave_scope()
-          self.pop_return_type()
+          self..resolve_block(body)..leave_scope().pop_return_type()
         }
         None => ()
       }

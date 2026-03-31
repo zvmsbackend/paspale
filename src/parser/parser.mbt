@@ -237,8 +237,7 @@ fn Parser::take_qualified_name(self : Parser) -> String {
   let name = StringBuilder::new()
   name.write_string(self.take_identifier())
   while self.consume_kind(Dot) {
-    name.write_string(".")
-    name.write_string(self.take_identifier())
+    name..write_string(".").write_string(self.take_identifier())
   }
   name.to_string()
 }
@@ -429,16 +428,17 @@ pub fn parse_expr_tokens(
   tokens : Array[@lexer.SpannedToken],
   sink : @diag.DiagSink,
 ) -> @ast.Spanned[@ast.Expr] {
-  let stable_tokens = if tokens.length() == 0 {
-    [@lexer.SpannedToken::new(Eof, @diag.Span::new(0, 0, 0))]
-  } else {
-    let last = tokens[tokens.length() - 1]
-    if last.kind() is Eof {
-      tokens
-    } else {
-      let with_eof = tokens
-      with_eof.push(@lexer.SpannedToken::new(Eof, last.span))
-      with_eof
+  let stable_tokens = match tokens {
+    [] => [@lexer.SpannedToken::new(Eof, @diag.Span::new(0, 0, 0))]
+    [..] => {
+      let last = tokens[tokens.length() - 1]
+      if last.kind() is Eof {
+        tokens
+      } else {
+        let with_eof = tokens
+        with_eof.push(@lexer.SpannedToken::new(Eof, last.span))
+        with_eof
+      }
     }
   }
   let p = { tokens: stable_tokens, sink, pos: 0 }
@@ -1118,14 +1118,14 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
   }
 
   match self.current().token {
-    Identifier(label) if self.peek_kind(1) == Colon => {
+    Identifier(label) if self.peek_kind(1) is Colon => {
       let s = self.current_span()
       ignore(self.bump())
       self.expect_kind(Colon, ":")
       let body = self.parse_statement()
       return make_stmt(@ast.Label(label, body), s.join(body.span))
     }
-    IntConst(label) if self.peek_kind(1) == Colon => {
+    IntConst(label) if self.peek_kind(1) is Colon => {
       let s = self.current_span()
       ignore(self.bump())
       self.expect_kind(Colon, ":")
@@ -1162,8 +1162,7 @@ fn Parser::parse_block(self : Parser) -> @ast.Spanned[@ast.Block] {
   let begin_span = if self.consume_kw(KwBegin, "BEGIN") {
     self.tokens[self.pos - 1].span
   } else {
-    self.error_here("P0011", "expected begin")
-    self.current_span()
+    self..error_here("P0011", "expected begin").current_span()
   }
 
   let stmts = []
@@ -1342,10 +1341,9 @@ pub fn parse_tokens(
   tokens : Array[@lexer.SpannedToken],
   sink : @diag.DiagSink,
 ) -> @ast.Spanned[@ast.CompilationUnit] {
-  let stable_tokens = if tokens.length() == 0 {
-    [@lexer.SpannedToken::new(Eof, @diag.Span::new(file_id, 0, 0))]
-  } else {
-    tokens
+  let stable_tokens = match tokens {
+    [] => [@lexer.SpannedToken::new(Eof, @diag.Span::new(file_id, 0, 0))]
+    [..] => tokens
   }
   let p = { tokens: stable_tokens, sink, pos: 0 }
   let cu = if p.is_kind_or_word(KwProgram, "PROGRAM") {
@@ -1355,8 +1353,9 @@ pub fn parse_tokens(
   } else if p.is_word("LIBRARY") {
     p.parse_library_unit()
   } else {
-    p.error_here("P0020", "expected program, unit, or library")
-    p.parse_program_unit()
+    p
+    ..error_here("P0020", "expected program, unit, or library")
+    .parse_program_unit()
   }
   p.error_trailing("compilation unit")
   cu

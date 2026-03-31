@@ -19,17 +19,18 @@ test "parse program unit with precedence" {
     @ast.ProgramUnit(p) => {
       assert_eq(p.name, "Demo")
       assert_eq(p.block.node.stmts.length(), 1)
-      match p.block.node.stmts[0].node {
-        @ast.Assign(_, rhs) =>
-          match rhs.node {
-            @ast.Binary(@ast.Add, _, right) =>
-              match right.node {
-                @ast.Binary(@ast.Mul, _, _) => ()
-                _ => fail("expected multiplication on right side")
-              }
-            _ => fail("expected additive expression")
+      if p.block.node.stmts[0].node is @ast.Assign(_, rhs) {
+        if rhs.node is @ast.Binary(@ast.Add, _, right) {
+          if right.node is @ast.Binary(@ast.Mul, _, _) {
+            ()
+          } else {
+            fail("expected multiplication on right side")
           }
-        _ => fail("expected assignment statement")
+        } else {
+          fail("expected additive expression")
+        }
+      } else {
+        fail("expected assignment statement")
       }
     }
     _ => fail("expected program unit")
@@ -59,13 +60,14 @@ test "parse expression with keyword operators" {
   let sink = @diag.new_sink()
   let expr = @parser.parse_expr_text(0, "a shl 1 + b", sink)
 
-  match expr.node {
-    @ast.Binary(@ast.Add, lhs, _) =>
-      match lhs.node {
-        @ast.Binary(@ast.Shl, _, _) => ()
-        _ => fail("expected shl on lhs")
-      }
-    _ => fail("expected additive top-level expression")
+  if expr.node is @ast.Binary(@ast.Add, lhs, _) {
+    if lhs.node is @ast.Binary(@ast.Shl, _, _) {
+      ()
+    } else {
+      fail("expected shl on lhs")
+    }
+  } else {
+    fail("expected additive top-level expression")
   }
   assert_eq(sink.len(), 0)
 }
@@ -252,15 +254,15 @@ test "parse message directive and set range expression" {
       }
       match p.block.node.stmts[0].node {
         @ast.Assign(_, rhs) =>
-          match rhs.node {
-            @ast.SetLiteral(items) => {
-              assert_eq(items.length(), 2)
-              match items[1].node {
-                @ast.Range(_, _) => ()
-                _ => fail("expected range item")
-              }
+          if rhs.node is @ast.SetLiteral(items) {
+            assert_eq(items.length(), 2)
+            if items[1].node is @ast.Range(_, _) {
+              ()
+            } else {
+              fail("expected range item")
             }
-            _ => fail("expected set literal")
+          } else {
+            fail("expected set literal")
           }
         _ => fail("expected assignment")
       }
@@ -276,21 +278,22 @@ test "parse array type with subrange index" {
   let src = "program P; type A = array[1..10] of integer; var a: A; begin end."
   let cu = @parser.parse_text(0, src, sink)
 
-  match cu.node {
-    @ast.ProgramUnit(p) =>
-      match p.block.node.decls[0].node {
-        @ast.TypeDecl("A", ty) =>
-          match ty.node {
-            @ast.Array(idx, _) =>
-              match idx.node {
-                @ast.Range(_, _) => ()
-                _ => fail("expected range index type")
-              }
-            _ => fail("expected array type")
-          }
-        _ => fail("expected type declaration")
+  if cu.node is @ast.ProgramUnit(p) {
+    if p.block.node.decls[0].node is @ast.TypeDecl("A", ty) {
+      if ty.node is @ast.Array(idx, _) {
+        if idx.node is @ast.Range(_, _) {
+          ()
+        } else {
+          fail("expected range index type")
+        }
+      } else {
+        fail("expected array type")
       }
-    _ => fail("expected program unit")
+    } else {
+      fail("expected type declaration")
+    }
+  } else {
+    fail("expected program unit")
   }
   assert_eq(sink.len(), 0)
 }
@@ -622,9 +625,10 @@ test "parse type declarations with record pointer enum" {
       assert_eq(sink.len(), 0)
       match p.block.node.decls[0].node {
         @ast.TypeDecl("IntPtr", ty) =>
-          match ty.node {
-            @ast.Pointer(_) => ()
-            _ => fail("expected pointer type")
+          if ty.node is @ast.Pointer(_) {
+            ()
+          } else {
+            fail("expected pointer type")
           }
         _ => fail("expected intptr type decl")
       }
@@ -648,9 +652,10 @@ test "parse enum type declaration" {
       assert_eq(sink.len(), 0)
       match p.block.node.decls[0].node {
         @ast.TypeDecl("Color", ty) =>
-          match ty.node {
-            @ast.Enum(names) => assert_eq(names.length(), 3)
-            _ => fail("expected enum type")
+          if ty.node is @ast.Enum(names) {
+            assert_eq(names.length(), 3)
+          } else {
+            fail("expected enum type")
           }
         _ => fail("expected color type decl")
       }
@@ -674,12 +679,11 @@ test "parse record type declaration" {
       assert_eq(sink.len(), 0)
       match p.block.node.decls[0].node {
         @ast.TypeDecl("Point", ty) =>
-          match ty.node {
-            @ast.Record(fields) => {
-              assert_eq(fields.length(), 1)
-              assert_eq(fields[0].node.names.length(), 2)
-            }
-            _ => fail("expected record type")
+          if ty.node is @ast.Record(fields) {
+            assert_eq(fields.length(), 1)
+            assert_eq(fields[0].node.names.length(), 2)
+          } else {
+            fail("expected record type")
           }
         _ => fail("expected point type decl")
       }

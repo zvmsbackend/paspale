@@ -83,17 +83,20 @@ test "array element type" {
   let dyn_arr = reg.make_dynamic_array(reg.char_type())
   let int_type = reg.integer_type()
 
-  match reg.array_element_type(static_arr) {
-    Some(elem) => assert_true(elem.eq(reg.real_type()))
-    None => fail("expected element type")
+  if reg.array_element_type(static_arr) is Some(elem) {
+    assert_true(elem.eq(reg.real_type()))
+  } else {
+    fail("expected element type")
   }
-  match reg.array_element_type(open_arr) {
-    Some(elem) => assert_true(elem.eq(reg.boolean_type()))
-    None => fail("expected element type")
+  if reg.array_element_type(open_arr) is Some(elem) {
+    assert_true(elem.eq(reg.boolean_type()))
+  } else {
+    fail("expected element type")
   }
-  match reg.array_element_type(dyn_arr) {
-    Some(elem) => assert_true(elem.eq(reg.char_type()))
-    None => fail("expected element type")
+  if reg.array_element_type(dyn_arr) is Some(elem) {
+    assert_true(elem.eq(reg.char_type()))
+  } else {
+    fail("expected element type")
   }
   assert_true(reg.array_element_type(int_type) is None)
 }

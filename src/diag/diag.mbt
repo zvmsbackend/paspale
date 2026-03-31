@@ -222,23 +222,19 @@ pub fn DiagSink::all(self : DiagSink) -> Array[Diagnostic] {
 
 ///|
 fn Diagnostic::primary_label(self : Diagnostic) -> Label {
-  if self.labels.length() == 0 {
-    Label::primary(Span::new(0, 0, 0), "")
-  } else {
-    self.labels
-    .iter()
-    .find_first(lbl => lbl.is_primary)
-    .unwrap_or(self.labels[0])
+  match self.labels {
+    [] => Label::primary(Span::new(0, 0, 0), "")
+    [head, ..] =>
+      self.labels.iter().find_first(lbl => lbl.is_primary).unwrap_or(head)
   }
 }
 
 ///|
 pub fn Diagnostic::render(self : Diagnostic, source_map : SourceMap) -> String {
-  if self.labels.length() == 0 {
-    if self.code == "" {
-      return "\{self.severity}: \{self.message}"
-    } else {
-      return "\{self.severity}[\{self.code}]: \{self.message}"
+  if self.labels is [] {
+    match self.code {
+      "" => return "\{self.severity}: \{self.message}"
+      _ => return "\{self.severity}[\{self.code}]: \{self.message}"
     }
   }
 
@@ -249,39 +245,36 @@ pub fn Diagnostic::render(self : Diagnostic, source_map : SourceMap) -> String {
     lbl.span.start,
   )
   let path = source_map.path(lbl.span.file_id)
-  if self.code == "" {
-    out.write_string(
-      "\{path}:\{line_no}:\{column_no}: \{self.severity}: \{self.message}",
-    )
-  } else {
-    out.write_string(
-      "\{path}:\{line_no}:\{column_no}: \{self.severity}[\{self.code}]: \{self.message}",
-    )
+  match self.code {
+    "" =>
+      out.write_string(
+        "\{path}:\{line_no}:\{column_no}: \{self.severity}: \{self.message}",
+      )
+    _ =>
+      out.write_string(
+        "\{path}:\{line_no}:\{column_no}: \{self.severity}[\{self.code}]: \{self.message}",
+      )
   }
 
   let src = source_map.line_text(lbl.span.file_id, line_no)
-  out.write_char('\n')
-  out.write_string(src)
+  out..write_char('\n').write_string(src)
 
   let mut mark_len = lbl.span.len()
   if mark_len <= 0 {
     mark_len = 1
   }
   let marker = " ".repeat(column_no - 1) + "^" + "~".repeat(mark_len - 1)
-  out.write_char('\n')
-  out.write_string(marker)
-  if lbl.message != "" {
-    out.write_char(' ')
-    out.write_string(lbl.message)
+  out..write_char('\n').write_string(marker)
+  match lbl.message {
+    "" => ()
+    _ => out..write_char(' ').write_string(lbl.message)
   }
 
   for note in self.notes {
-    out.write_string("\nnote: ")
-    out.write_string(note)
+    out..write_string("\nnote: ").write_string(note)
   }
   for help in self.helps {
-    out.write_string("\nhelp: ")
-    out.write_string(help)
+    out..write_string("\nhelp: ").write_string(help)
   }
   out.to_string()
 }

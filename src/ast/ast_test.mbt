@@ -46,7 +46,7 @@ test "p0 module-level structures are representable" {
     block: main_block,
     finalization: [@ast.Spanned::new(@ast.Exit(None), s)],
   }
-  let cu = @ast.CompilationUnit::ProgramUnit(unit)
+  let cu : @ast.CompilationUnit = ProgramUnit(unit)
 
   match cu {
     ProgramUnit(p) => {
@@ -64,7 +64,7 @@ test "p0 statements and directives are representable" {
   let from_ = @ast.Spanned::new(@ast.Literal(@ast.Int("0")), s)
   let to_ = @ast.Spanned::new(@ast.Literal(@ast.Int("10")), s)
   let body = @ast.Spanned::new(@ast.Continue, s)
-  let for_stmt = @ast.For(loop_var, from_, @ast.To, to_, body)
+  let for_stmt : @ast.Stmt = For(loop_var, from_, To, to_, body)
 
   let proc_decl = @ast.ProcDecl::{
     name: "P",
