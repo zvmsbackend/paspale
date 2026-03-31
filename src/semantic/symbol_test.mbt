@@ -43,3 +43,33 @@ test "semantic reports unknown named type" {
 
   assert_true(has_diag_code(sink, "S0003"))
 }
+
+///|
+test "semantic reports assignment type mismatch" {
+  let sink = @diag.new_sink()
+  let src = "program P; var i: integer; s: string; begin i := s; end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0010"))
+}
+
+///|
+test "semantic reports call argument count mismatch" {
+  let sink = @diag.new_sink()
+  let src = "program P; procedure Foo(a: integer); begin end; begin Foo(); end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0016"))
+}
+
+///|
+test "semantic reports call argument type mismatch" {
+  let sink = @diag.new_sink()
+  let src = "program P; procedure Foo(a: integer); begin end; begin Foo(1.5); end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0017"))
+}

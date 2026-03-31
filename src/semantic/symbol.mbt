@@ -47,6 +47,234 @@ pub struct Resolver {
 }
 
 ///|
+fn Resolver::error_type(self : Resolver) -> TypeRef {
+  self.types.register(Error)
+}
+
+///|
+fn Resolver::symbol_type(
+  self : Resolver,
+  sym_id : Int,
+  span : @diag.Span,
+) -> TypeRef {
+  match self.symbols[sym_id].ty {
+    Some(t) => t
+    None => {
+      push_error(
+        self.sink,
+        "S0005",
+        "symbol '\{self.symbols[sym_id].name}' has no type information",
+        span,
+      )
+      self.error_type()
+    }
+  }
+}
+
+///|
+fn Resolver::expect_boolean(
+  self : Resolver,
+  ty : TypeRef,
+  span : @diag.Span,
+) -> Unit {
+  if !self.types.is_boolean(ty) {
+    push_error(self.sink, "S0011", "expected boolean expression", span)
+  }
+}
+
+///|
+fn Resolver::expect_numeric(
+  self : Resolver,
+  ty : TypeRef,
+  span : @diag.Span,
+) -> Unit {
+  if !self.types.is_numeric(ty) {
+    push_error(self.sink, "S0012", "expected numeric expression", span)
+  }
+}
+
+///|
+fn Resolver::resolve_call(
+  self : Resolver,
+  callee : @ast.Spanned[@ast.Expr],
+  args : Array[@ast.Spanned[@ast.Expr]],
+  span : @diag.Span,
+) -> TypeRef {
+  let callee_ty = self.infer_expr_type(callee)
+  let arg_types = args.map(a => self.infer_expr_type(a))
+
+  match self.types.get(callee_ty) {
+    Proc(params, ret) => {
+      if params.length() != arg_types.length() {
+        push_error(
+          self.sink,
+          "S0016",
+          "argument count mismatch: expected \{params.length()}, got \{arg_types.length()}",
+          span,
+        )
+      }
+      let n = if params.length() < arg_types.length() {
+        params.length()
+      } else {
+        arg_types.length()
+      }
+      for i = 0; i < n; i = i + 1 {
+        if !self.types.is_assignable_from(params[i], arg_types[i]) {
+          push_error(
+            self.sink,
+            "S0017",
+            "argument type mismatch at index \{i}",
+            args[i].span,
+          )
+        }
+      }
+      match ret {
+        Some(rt) => rt
+        None => self.types.void_type()
+      }
+    }
+    _ => {
+      push_error(
+        self.sink,
+        "S0015",
+        "call target is not a procedure/function",
+        span,
+      )
+      self.error_type()
+    }
+  }
+}
+
+///|
+fn Resolver::infer_expr_type(
+  self : Resolver,
+  e : @ast.Spanned[@ast.Expr],
+) -> TypeRef {
+  match e.node {
+    @ast.Name(name) =>
+      match self.use_symbol(name, e.span) {
+        Some(id) => self.symbol_type(id, e.span)
+        None => self.error_type()
+      }
+    @ast.Literal(lit) =>
+      match lit {
+        @ast.Int(_) => self.types.integer_type()
+        @ast.Real(_) => self.types.real_type()
+        @ast.String(_) => self.types.string_type()
+        @ast.Bool(_) => self.types.boolean_type()
+        @ast.Nil => self.error_type()
+      }
+    @ast.Unary(op, rhs) => {
+      let rty = self.infer_expr_type(rhs)
+      match op {
+        @ast.Plus => {
+          self.expect_numeric(rty, e.span)
+          rty
+        }
+        @ast.Minus => {
+          self.expect_numeric(rty, e.span)
+          rty
+        }
+        @ast.Not => {
+          self.expect_boolean(rty, e.span)
+          self.types.boolean_type()
+        }
+        @ast.Deref =>
+          match self.types.get(rty) {
+            Pointer(base) => base
+            _ => {
+              push_error(
+                self.sink,
+                "S0013",
+                "cannot dereference non-pointer value",
+                e.span,
+              )
+              self.error_type()
+            }
+          }
+        @ast.Addr => self.types.make_pointer(rty)
+      }
+    }
+    @ast.Binary(op, lhs, rhs) => {
+      let lty = self.infer_expr_type(lhs)
+      let rty = self.infer_expr_type(rhs)
+      match op {
+        @ast.Add | @ast.Sub | @ast.Mul => {
+          self.expect_numeric(lty, lhs.span)
+          self.expect_numeric(rty, rhs.span)
+          if self.types.is_compatible_with(lty, self.types.real_type()) ||
+            self.types.is_compatible_with(rty, self.types.real_type()) {
+            self.types.real_type()
+          } else {
+            self.types.integer_type()
+          }
+        }
+        @ast.RealDiv => {
+          self.expect_numeric(lty, lhs.span)
+          self.expect_numeric(rty, rhs.span)
+          self.types.real_type()
+        }
+        @ast.IntDiv | @ast.Mod | @ast.Shl | @ast.Shr => {
+          self.expect_numeric(lty, lhs.span)
+          self.expect_numeric(rty, rhs.span)
+          self.types.integer_type()
+        }
+        @ast.And | @ast.Or | @ast.Xor =>
+          if self.types.is_boolean(lty) && self.types.is_boolean(rty) {
+            self.types.boolean_type()
+          } else {
+            self.expect_numeric(lty, lhs.span)
+            self.expect_numeric(rty, rhs.span)
+            self.types.integer_type()
+          }
+        @ast.Eq | @ast.Ne | @ast.Lt | @ast.Le | @ast.Gt | @ast.Ge => {
+          if !self.types.is_compatible_with(lty, rty) {
+            push_error(
+              self.sink,
+              "S0014",
+              "incompatible operands in comparison",
+              e.span,
+            )
+          }
+          self.types.boolean_type()
+        }
+        @ast.In | @ast.Is => self.types.boolean_type()
+        @ast.As => lty
+      }
+    }
+    @ast.Call(callee, args) => self.resolve_call(callee, args, e.span)
+    @ast.Index(base, idx) => {
+      let bty = self.infer_expr_type(base)
+      let _ = self.infer_expr_type(idx)
+      match self.types.array_element_type(bty) {
+        Some(elem) => elem
+        None => {
+          push_error(self.sink, "S0018", "indexing non-array value", e.span)
+          self.error_type()
+        }
+      }
+    }
+    @ast.Field(base, _) => {
+      let _ = self.infer_expr_type(base)
+      self.error_type()
+    }
+    @ast.SetLiteral(items) => {
+      for item in items {
+        let _ = self.infer_expr_type(item)
+      }
+      self.error_type()
+    }
+    @ast.Range(a, b) => {
+      let _ = self.infer_expr_type(a)
+      let _ = self.infer_expr_type(b)
+      self.error_type()
+    }
+    @ast.Paren(inner) => self.infer_expr_type(inner)
+    @ast.Error => self.error_type()
+  }
+}
+
+///|
 fn push_error(
   sink : @diag.DiagSink,
   code : String,
@@ -293,38 +521,7 @@ fn Resolver::resolve_type_expr(
 
 ///|
 fn Resolver::resolve_expr(self : Resolver, e : @ast.Spanned[@ast.Expr]) -> Unit {
-  match e.node {
-    @ast.Name(name) => {
-      let _ = self.use_symbol(name, e.span)
-    }
-    @ast.Literal(_) => ()
-    @ast.Unary(_, rhs) => self.resolve_expr(rhs)
-    @ast.Binary(_, lhs, rhs) => {
-      self.resolve_expr(lhs)
-      self.resolve_expr(rhs)
-    }
-    @ast.Call(callee, args) => {
-      self.resolve_expr(callee)
-      for a in args {
-        self.resolve_expr(a)
-      }
-    }
-    @ast.Index(base, idx) => {
-      self.resolve_expr(base)
-      self.resolve_expr(idx)
-    }
-    @ast.Field(base, _) => self.resolve_expr(base)
-    @ast.SetLiteral(items) =>
-      for item in items {
-        self.resolve_expr(item)
-      }
-    @ast.Range(a, b) => {
-      self.resolve_expr(a)
-      self.resolve_expr(b)
-    }
-    @ast.Paren(inner) => self.resolve_expr(inner)
-    @ast.Error => ()
-  }
+  let _ = self.infer_expr_type(e)
 }
 
 ///|
@@ -336,17 +533,18 @@ fn Resolver::resolve_stmt(self : Resolver, s : @ast.Spanned[@ast.Stmt]) -> Unit 
         self.resolve_stmt(st)
       }
     @ast.Assign(lhs, rhs) => {
-      self.resolve_expr(lhs)
-      self.resolve_expr(rhs)
-    }
-    @ast.Call(callee, args) => {
-      self.resolve_expr(callee)
-      for a in args {
-        self.resolve_expr(a)
+      let lty = self.infer_expr_type(lhs)
+      let rty = self.infer_expr_type(rhs)
+      if !self.types.is_assignable_from(lty, rty) {
+        push_error(self.sink, "S0010", "incompatible assignment types", s.span)
       }
     }
+    @ast.Call(callee, args) => {
+      let _ = self.resolve_call(callee, args, s.span)
+    }
     @ast.If(cond, then_s, else_s) => {
-      self.resolve_expr(cond)
+      let cty = self.infer_expr_type(cond)
+      self.expect_boolean(cty, cond.span)
       self.resolve_stmt(then_s)
       match else_s {
         Some(es) => self.resolve_stmt(es)
@@ -367,19 +565,33 @@ fn Resolver::resolve_stmt(self : Resolver, s : @ast.Spanned[@ast.Stmt]) -> Unit 
       }
     }
     @ast.While(cond, body) => {
-      self.resolve_expr(cond)
+      let cty = self.infer_expr_type(cond)
+      self.expect_boolean(cty, cond.span)
       self.resolve_stmt(body)
     }
     @ast.RepeatUntil(stmts, cond) => {
       for st in stmts {
         self.resolve_stmt(st)
       }
-      self.resolve_expr(cond)
+      let cty = self.infer_expr_type(cond)
+      self.expect_boolean(cty, cond.span)
     }
     @ast.For(loop_var, from_, _, to_, body) => {
-      self.resolve_expr(loop_var)
-      self.resolve_expr(from_)
-      self.resolve_expr(to_)
+      let vty = self.infer_expr_type(loop_var)
+      let fty = self.infer_expr_type(from_)
+      let tty = self.infer_expr_type(to_)
+      self.expect_numeric(vty, loop_var.span)
+      if !self.types.is_assignable_from(vty, fty) {
+        push_error(
+          self.sink,
+          "S0010",
+          "for-range start type mismatch",
+          from_.span,
+        )
+      }
+      if !self.types.is_assignable_from(vty, tty) {
+        push_error(self.sink, "S0010", "for-range end type mismatch", to_.span)
+      }
       self.resolve_stmt(body)
     }
     @ast.With(items, body) => {
@@ -416,7 +628,9 @@ fn Resolver::resolve_stmt(self : Resolver, s : @ast.Spanned[@ast.Stmt]) -> Unit 
     }
     @ast.Raise(expr) =>
       match expr {
-        Some(e) => self.resolve_expr(e)
+        Some(e) => {
+          let _ = self.infer_expr_type(e)
+        }
         None => ()
       }
     @ast.Label(name, stmt) => {
@@ -431,7 +645,9 @@ fn Resolver::resolve_stmt(self : Resolver, s : @ast.Spanned[@ast.Stmt]) -> Unit 
     @ast.Continue => ()
     @ast.Exit(expr) =>
       match expr {
-        Some(e) => self.resolve_expr(e)
+        Some(e) => {
+          let _ = self.infer_expr_type(e)
+        }
         None => ()
       }
     @ast.Error => ()
@@ -442,7 +658,15 @@ fn Resolver::resolve_stmt(self : Resolver, s : @ast.Spanned[@ast.Stmt]) -> Unit 
 fn Resolver::resolve_decl(self : Resolver, d : @ast.Spanned[@ast.Decl]) -> Unit {
   match d.node {
     @ast.ConstDecl(name, expr) => {
-      self.resolve_expr(expr)
+      let cty = self.infer_expr_type(expr)
+      if self.types.get(cty) is Error {
+        push_error(
+          self.sink,
+          "S0019",
+          "constant expression has invalid type",
+          expr.span,
+        )
+      }
       let _ = self.define_symbol(name, Const, None, d.span)
     }
     @ast.TypeDecl(name, tyexpr) => {
@@ -455,7 +679,17 @@ fn Resolver::resolve_decl(self : Resolver, d : @ast.Spanned[@ast.Decl]) -> Unit 
         let _ = self.define_symbol(n, Var, Some(ty), d.span)
       }
       match init {
-        Some(expr) => self.resolve_expr(expr)
+        Some(expr) => {
+          let ety = self.infer_expr_type(expr)
+          if !self.types.is_assignable_from(ty, ety) {
+            push_error(
+              self.sink,
+              "S0010",
+              "initializer type mismatch",
+              expr.span,
+            )
+          }
+        }
         None => ()
       }
     }
