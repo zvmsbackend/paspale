@@ -32,6 +32,7 @@ pub struct Resolver {
   symbols : Array[Symbol]
   mut current_scope : Int
   types : TypeRegistry
+  return_type_stack : Array[TypeRef?]
 }
 pub fn Resolver::define_symbol(Self, String, SymKind, TypeRef?, @diag.Span) -> Int?
 pub fn Resolver::enter_scope(Self) -> Int

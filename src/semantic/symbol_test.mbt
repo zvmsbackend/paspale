@@ -73,3 +73,54 @@ test "semantic reports call argument type mismatch" {
 
   assert_true(has_diag_code(sink, "S0017"))
 }
+
+///|
+test "semantic checks record field access" {
+  let sink = @diag.new_sink()
+  let src = "program P; type R = record x: integer; end; var r: R; begin r.x := 1; end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_false(has_diag_code(sink, "S0021"))
+  assert_false(has_diag_code(sink, "S0022"))
+}
+
+///|
+test "semantic reports unknown record field" {
+  let sink = @diag.new_sink()
+  let src = "program P; type R = record x: integer; end; var r: R; begin r.y := 1; end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0021"))
+}
+
+///|
+test "semantic reports non-ordinal array index" {
+  let sink = @diag.new_sink()
+  let src = "program P; type A = array[1..10] of integer; var a: A; begin a[1.5] := 1; end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0020"))
+}
+
+///|
+test "semantic checks exit expression type in function" {
+  let sink = @diag.new_sink()
+  let src = "program P; function F: integer; begin exit('x'); end; begin end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0023"))
+}
+
+///|
+test "semantic rejects exit expression in procedure" {
+  let sink = @diag.new_sink()
+  let src = "program P; procedure Q; begin exit(1); end; begin end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0024"))
+}

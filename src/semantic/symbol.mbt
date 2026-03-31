@@ -44,6 +44,7 @@ pub struct Resolver {
   symbols : Array[Symbol]
   mut current_scope : Int
   types : TypeRegistry
+  return_type_stack : Array[TypeRef?]
 }
 
 ///|
@@ -245,7 +246,10 @@ fn Resolver::infer_expr_type(
     @ast.Call(callee, args) => self.resolve_call(callee, args, e.span)
     @ast.Index(base, idx) => {
       let bty = self.infer_expr_type(base)
-      let _ = self.infer_expr_type(idx)
+      let ity = self.infer_expr_type(idx)
+      if !self.types.is_ordinal(ity) {
+        push_error(self.sink, "S0020", "array index must be ordinal", idx.span)
+      }
       match self.types.array_element_type(bty) {
         Some(elem) => elem
         None => {
@@ -254,9 +258,36 @@ fn Resolver::infer_expr_type(
         }
       }
     }
-    @ast.Field(base, _) => {
-      let _ = self.infer_expr_type(base)
-      self.error_type()
+    @ast.Field(base, field_name) => {
+      let bty = self.infer_expr_type(base)
+      match self.types.record_fields(bty) {
+        Some(fields) => {
+          let matched = fields
+            .iter()
+            .find_first(f => norm_name(f.name) == norm_name(field_name))
+          match matched {
+            Some(f) => f.ty
+            None => {
+              push_error(
+                self.sink,
+                "S0021",
+                "unknown field '\{field_name}'",
+                e.span,
+              )
+              self.error_type()
+            }
+          }
+        }
+        None => {
+          push_error(
+            self.sink,
+            "S0022",
+            "field access on non-record value",
+            e.span,
+          )
+          self.error_type()
+        }
+      }
     }
     @ast.SetLiteral(items) => {
       for item in items {
@@ -296,9 +327,31 @@ pub fn Resolver::new(sink : @diag.DiagSink) -> Resolver {
     symbols: [],
     current_scope: 0,
     types: TypeRegistry::new(),
+    return_type_stack: [],
   }
   r.bootstrap_builtins()
   r
+}
+
+///|
+fn Resolver::push_return_type(self : Resolver, ty : TypeRef?) -> Unit {
+  self.return_type_stack.push(ty)
+}
+
+///|
+fn Resolver::pop_return_type(self : Resolver) -> Unit {
+  if self.return_type_stack.length() > 0 {
+    self.return_type_stack.pop() |> ignore
+  }
+}
+
+///|
+fn Resolver::current_return_type(self : Resolver) -> TypeRef? {
+  if self.return_type_stack.length() == 0 {
+    None
+  } else {
+    self.return_type_stack[self.return_type_stack.length() - 1]
+  }
 }
 
 ///|
@@ -646,7 +699,25 @@ fn Resolver::resolve_stmt(self : Resolver, s : @ast.Spanned[@ast.Stmt]) -> Unit 
     @ast.Exit(expr) =>
       match expr {
         Some(e) => {
-          let _ = self.infer_expr_type(e)
+          let ety = self.infer_expr_type(e)
+          match self.current_return_type() {
+            Some(rty) =>
+              if !self.types.is_assignable_from(rty, ety) {
+                push_error(
+                  self.sink,
+                  "S0023",
+                  "exit expression type mismatch",
+                  e.span,
+                )
+              }
+            None =>
+              push_error(
+                self.sink,
+                "S0024",
+                "exit expression is only allowed in function",
+                e.span,
+              )
+          }
         }
         None => ()
       }
@@ -699,6 +770,7 @@ fn Resolver::resolve_decl(self : Resolver, d : @ast.Spanned[@ast.Decl]) -> Unit 
       let _ = self.define_symbol(pd.name, Proc, Some(proc_ty), d.span)
       match pd.body {
         Some(body) => {
+          self.push_return_type(None)
           self.enter_scope() |> ignore
           for p in pd.params {
             let ty = self.resolve_type_expr(p.node.ty)
@@ -708,6 +780,7 @@ fn Resolver::resolve_decl(self : Resolver, d : @ast.Spanned[@ast.Decl]) -> Unit 
           }
           self.resolve_block(body)
           self.leave_scope()
+          self.pop_return_type()
         }
         None => ()
       }
@@ -719,6 +792,7 @@ fn Resolver::resolve_decl(self : Resolver, d : @ast.Spanned[@ast.Decl]) -> Unit 
       let _ = self.define_symbol(fd.name, Proc, Some(fn_ty), d.span)
       match fd.body {
         Some(body) => {
+          self.push_return_type(Some(ret))
           self.enter_scope() |> ignore
           for p in fd.params {
             let ty = self.resolve_type_expr(p.node.ty)
@@ -729,6 +803,7 @@ fn Resolver::resolve_decl(self : Resolver, d : @ast.Spanned[@ast.Decl]) -> Unit 
           let _ = self.define_symbol("Result", Var, Some(ret), d.span)
           self.resolve_block(body)
           self.leave_scope()
+          self.pop_return_type()
         }
         None => ()
       }

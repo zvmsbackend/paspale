@@ -271,6 +271,31 @@ test "parse message directive and set range expression" {
 }
 
 ///|
+test "parse array type with subrange index" {
+  let sink = @diag.new_sink()
+  let src = "program P; type A = array[1..10] of integer; var a: A; begin end."
+  let cu = @parser.parse_text(0, src, sink)
+
+  match cu.node {
+    @ast.ProgramUnit(p) =>
+      match p.block.node.decls[0].node {
+        @ast.TypeDecl("A", ty) =>
+          match ty.node {
+            @ast.Array(idx, _) =>
+              match idx.node {
+                @ast.Range(_, _) => ()
+                _ => fail("expected range index type")
+              }
+            _ => fail("expected array type")
+          }
+        _ => fail("expected type declaration")
+      }
+    _ => fail("expected program unit")
+  }
+  assert_eq(sink.len(), 0)
+}
+
+///|
 test "non-happy expr missing closing paren" {
   let sink = @diag.new_sink()
   let _ = @parser.parse_expr_text(0, "(1 + 2", sink)

@@ -512,7 +512,7 @@ fn Parser::parse_type_expr(self : Parser) -> @ast.Spanned[@ast.TypeExpr] {
 
   if self.consume_word("SET") {
     let s = self.tokens[self.pos - 1].span
-    self.expect_word("OF")
+    self.expect_kw(KwOf, "OF")
     let inner = self.parse_type_expr()
     return make_type_expr(@ast.Set(inner), s.join(inner.span))
   }
@@ -520,9 +520,9 @@ fn Parser::parse_type_expr(self : Parser) -> @ast.Spanned[@ast.TypeExpr] {
   if self.consume_word("ARRAY") {
     let s = self.tokens[self.pos - 1].span
     self.expect_kind(LBracket, "[")
-    let idx = self.parse_expr()
+    let idx = self.parse_range_expr()
     self.expect_kind(RBracket, "]")
-    self.expect_word("OF")
+    self.expect_kw(KwOf, "OF")
     let elem = self.parse_type_expr()
     return make_type_expr(@ast.Array(idx, elem), s.join(elem.span))
   }
