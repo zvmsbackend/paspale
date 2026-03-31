@@ -124,3 +124,43 @@ test "semantic rejects exit expression in procedure" {
 
   assert_true(has_diag_code(sink, "S0024"))
 }
+
+///|
+test "semantic reports array index type declaration without subrange" {
+  let sink = @diag.new_sink()
+  let src = "program P; type A = array[1.5] of integer; begin end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0025"))
+}
+
+///|
+test "semantic reports invalid subrange bound order" {
+  let sink = @diag.new_sink()
+  let src = "program P; type R = 10..1; begin end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0027"))
+}
+
+///|
+test "semantic reports non-ordinal set element type" {
+  let sink = @diag.new_sink()
+  let src = "program P; type S = set of real; begin end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0028"))
+}
+
+///|
+test "semantic reports duplicate record field declaration" {
+  let sink = @diag.new_sink()
+  let src = "program P; type R = record x: integer; x: real; end; begin end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0029"))
+}

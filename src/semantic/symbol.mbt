@@ -514,6 +514,36 @@ fn Resolver::expect_type(
 }
 
 ///|
+fn Resolver::int_bound_value(
+  self : Resolver,
+  e : @ast.Spanned[@ast.Expr],
+) -> Int? {
+  match e.node {
+    @ast.Literal(@ast.Int(v)) =>
+      Some(@string.parse_int(v)) catch {
+        _ => {
+          push_error(
+            self.sink,
+            "S0026",
+            "subrange bound must be integer literal",
+            e.span,
+          )
+          None
+        }
+      }
+    _ => {
+      push_error(
+        self.sink,
+        "S0026",
+        "subrange bound must be integer literal",
+        e.span,
+      )
+      None
+    }
+  }
+}
+
+///|
 fn Resolver::resolve_type_expr(
   self : Resolver,
   ty : @ast.Spanned[@ast.TypeExpr],
@@ -526,21 +556,45 @@ fn Resolver::resolve_type_expr(
     }
     @ast.Array(index_expr, elem_ty) => {
       let elem = self.resolve_type_expr(elem_ty)
-      let (low, high) = match index_expr.node {
+      match index_expr.node {
         @ast.Range(a, b) => {
-          let l = match a.node {
-            @ast.Literal(@ast.Int(v)) => @string.parse_int(v) catch { _ => 0 }
-            _ => 0
+          let low = self.int_bound_value(a)
+          let high = self.int_bound_value(b)
+          match (low, high) {
+            (Some(l), Some(h)) =>
+              if l > h {
+                push_error(
+                  self.sink,
+                  "S0027",
+                  "subrange lower bound must not exceed upper bound",
+                  index_expr.span,
+                )
+                self.error_type()
+              } else {
+                match
+                  self.types.create_static_array(
+                    self.types.integer_type(),
+                    l,
+                    h,
+                    elem,
+                  ) {
+                  Some(arr) => arr
+                  None => self.error_type()
+                }
+              }
+            _ => self.error_type()
           }
-          let h = match b.node {
-            @ast.Literal(@ast.Int(v)) => @string.parse_int(v) catch { _ => 0 }
-            _ => 0
-          }
-          (l, h)
         }
-        _ => (0, 0)
+        _ => {
+          push_error(
+            self.sink,
+            "S0025",
+            "array index type must be subrange",
+            index_expr.span,
+          )
+          self.error_type()
+        }
       }
-      self.types.make_static_array(self.types.integer_type(), low, high, elem)
     }
     @ast.Record(fields) => {
       let out_fields = []
@@ -550,23 +604,56 @@ fn Resolver::resolve_type_expr(
           out_fields.push(FieldDef::{ name: n, ty: fty })
         }
       }
-      self.types.make_record(out_fields)
+      match self.types.create_record(out_fields) {
+        Some(rec) => rec
+        None => {
+          push_error(
+            self.sink,
+            "S0029",
+            "record fields must be unique and valid",
+            ty.span,
+          )
+          self.error_type()
+        }
+      }
     }
     @ast.Enum(names) => self.types.make_enum(names)
     @ast.Subrange(a, b) => {
-      let low = match a.node {
-        @ast.Literal(@ast.Int(v)) => @string.parse_int(v) catch { _ => 0 }
-        _ => 0
+      let low = self.int_bound_value(a)
+      let high = self.int_bound_value(b)
+      match (low, high) {
+        (Some(l), Some(h)) =>
+          if l > h {
+            push_error(
+              self.sink,
+              "S0027",
+              "subrange lower bound must not exceed upper bound",
+              ty.span,
+            )
+            self.error_type()
+          } else {
+            match self.types.create_subrange(self.types.integer_type(), l, h) {
+              Some(sr) => sr
+              None => self.error_type()
+            }
+          }
+        _ => self.error_type()
       }
-      let high = match b.node {
-        @ast.Literal(@ast.Int(v)) => @string.parse_int(v) catch { _ => 0 }
-        _ => 0
-      }
-      self.types.make_subrange(self.types.integer_type(), low, high)
     }
     @ast.Set(elem) => {
       let et = self.resolve_type_expr(elem)
-      self.types.make_set(et)
+      match self.types.create_set(et) {
+        Some(st) => st
+        None => {
+          push_error(
+            self.sink,
+            "S0028",
+            "set element type must be ordinal",
+            elem.span,
+          )
+          self.error_type()
+        }
+      }
     }
     @ast.Error => self.types.register(Error)
   }
