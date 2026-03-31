@@ -1,7 +1,13 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "sennenki/paspale/semantic"
 
+import {
+  "sennenki/paspale/ast",
+  "sennenki/paspale/diag",
+}
+
 // Values
+pub fn analyze(@ast.Spanned[@ast.CompilationUnit], @diag.DiagSink) -> Resolver
 
 // Errors
 
@@ -18,6 +24,47 @@ pub(all) enum BuiltinType {
 pub(all) struct FieldDef {
   name : String
   ty : TypeRef
+} derive(Eq, Show)
+
+pub struct Resolver {
+  sink : @diag.DiagSink
+  scopes : Array[Scope]
+  symbols : Array[Symbol]
+  mut current_scope : Int
+  types : TypeRegistry
+}
+pub fn Resolver::define_symbol(Self, String, SymKind, TypeRef?, @diag.Span) -> Int?
+pub fn Resolver::enter_scope(Self) -> Int
+pub fn Resolver::leave_scope(Self) -> Unit
+pub fn Resolver::lookup_symbol(Self, String) -> Int?
+pub fn Resolver::new(@diag.DiagSink) -> Self
+pub fn Resolver::resolve_compilation_unit(Self, @ast.Spanned[@ast.CompilationUnit]) -> Unit
+pub fn Resolver::symbols(Self) -> Array[Symbol]
+
+pub struct Scope {
+  id : Int
+  parent : Int?
+  table : Map[String, Int]
+}
+
+pub(all) enum SymKind {
+  Var
+  Const
+  Type
+  Proc
+  Unit
+  Label
+  Param
+} derive(Eq, Show)
+
+pub struct Symbol {
+  id : Int
+  name : String
+  kind : SymKind
+  ty : TypeRef?
+  owner_scope : Int
+  flags : Int
+  decl_span : @diag.Span
 } derive(Eq, Show)
 
 pub(all) enum Type {

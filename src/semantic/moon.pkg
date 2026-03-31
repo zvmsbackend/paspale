@@ -1,2 +1,9 @@
 import {
+  "moonbitlang/core/string",
+  "sennenki/paspale/ast",
+  "sennenki/paspale/diag",
 }
+
+import {
+  "sennenki/paspale/parser",
+} for "test"
