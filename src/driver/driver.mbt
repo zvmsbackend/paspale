@@ -87,6 +87,22 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
           out.write_string(src)
           out.write_string("\n")
         }
+      { kind: Instruction, opcode: "add", operands: [dst, src], .. } =>
+        if is_reg(dst) && (is_reg(src) || is_int(src)) {
+          out.write_string("  add ")
+          out.write_string(dst)
+          out.write_string(", ")
+          out.write_string(src)
+          out.write_string("\n")
+        }
+      { kind: Instruction, opcode: "sub", operands: [dst, src], .. } =>
+        if is_reg(dst) && (is_reg(src) || is_int(src)) {
+          out.write_string("  sub ")
+          out.write_string(dst)
+          out.write_string(", ")
+          out.write_string(src)
+          out.write_string("\n")
+        }
       { kind: Instruction, opcode: "ret", .. } => {
         out.write_string("  ret\n")
         wrote_ret = true

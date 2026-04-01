@@ -28,6 +28,45 @@ fn int_lit(e : @ast.Spanned[@ast.Expr]) -> String? {
 }
 
 ///|
+fn lower_int_expr(
+  out : AsmData,
+  e : @ast.Spanned[@ast.Expr],
+  span : @diag.Span,
+) -> Bool {
+  match e.node {
+    Literal(Int(v)) => {
+      out.emit(Tai::new(Instruction, "mov", ["eax", v]).with_span(span))
+      true
+    }
+    Unary(Minus, rhs) =>
+      if int_lit(rhs) is Some(v) {
+        out.emit(Tai::new(Instruction, "mov", ["eax", "0"]).with_span(span))
+        out.emit(Tai::new(Instruction, "sub", ["eax", v]).with_span(span))
+        true
+      } else {
+        false
+      }
+    Binary(Add, lhs, rhs) =>
+      if int_lit(lhs) is Some(a) && int_lit(rhs) is Some(b) {
+        out.emit(Tai::new(Instruction, "mov", ["eax", a]).with_span(span))
+        out.emit(Tai::new(Instruction, "add", ["eax", b]).with_span(span))
+        true
+      } else {
+        false
+      }
+    Binary(Sub, lhs, rhs) =>
+      if int_lit(lhs) is Some(a) && int_lit(rhs) is Some(b) {
+        out.emit(Tai::new(Instruction, "mov", ["eax", a]).with_span(span))
+        out.emit(Tai::new(Instruction, "sub", ["eax", b]).with_span(span))
+        true
+      } else {
+        false
+      }
+    _ => false
+  }
+}
+
+///|
 fn emit_assign(
   out : AsmData,
   lhs : @ast.Spanned[@ast.Expr],
@@ -38,8 +77,8 @@ fn emit_assign(
     (Name(dst), Name(src)) if dst == src =>
       out.emit(Tai::new(Instruction, "mov", ["eax", "eax"]).with_span(span))
     (Name(_), _) =>
-      if int_lit(rhs) is Some(v) {
-        out.emit(Tai::new(Instruction, "mov", ["eax", v]).with_span(span))
+      if lower_int_expr(out, rhs, span) {
+        ()
       } else {
         out.emit(
           Tai::new(Comment, "; assign \{expr_text(lhs)} := \{expr_text(rhs)}", []).with_span(
