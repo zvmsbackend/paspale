@@ -244,3 +244,44 @@ test "semantic reports duplicate literal case labels" {
 
   assert_true(has_diag_code(sink, "S0035"))
 }
+
+///|
+test "semantic rejects break outside loop" {
+  let sink = @diag.DiagSink::new()
+  let src = "program P; begin break; end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0036"))
+}
+
+///|
+test "semantic rejects continue outside loop" {
+  let sink = @diag.DiagSink::new()
+  let src = "program P; begin continue; end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0037"))
+}
+
+///|
+test "semantic accepts break and continue inside loop" {
+  let sink = @diag.DiagSink::new()
+  let src = "program P; var i: integer; begin while i < 10 do begin continue; break; end; end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_false(has_diag_code(sink, "S0036"))
+  assert_false(has_diag_code(sink, "S0037"))
+}
+
+///|
+test "semantic rejects goto target that is not label" {
+  let sink = @diag.DiagSink::new()
+  let src = "program P; var x: integer; begin goto x; end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0038"))
+}

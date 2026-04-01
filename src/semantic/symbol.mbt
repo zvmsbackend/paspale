@@ -38,6 +38,7 @@ struct Resolver {
   symbols : Array[Symbol]
   proc_param_modes : Map[Int, Array[@ast.ParamMode]]
   mut current_scope : Int
+  mut loop_depth : Int
   types : TypeRegistry
   return_type_stack : Array[TypeRef?]
 }
@@ -319,6 +320,7 @@ pub fn Resolver::new(sink : @diag.DiagSink) -> Resolver {
     symbols: [],
     proc_param_modes: {},
     current_scope: 0,
+    loop_depth: 0,
     types: TypeRegistry::new(),
     return_type_stack: [],
   }
@@ -358,6 +360,41 @@ fn Resolver::flatten_param_signature(
     }
   }
   (types, modes)
+}
+
+///|
+fn Resolver::enter_loop(self : Resolver) -> Unit {
+  self.loop_depth = self.loop_depth + 1
+}
+
+///|
+fn Resolver::leave_loop(self : Resolver) -> Unit {
+  if self.loop_depth > 0 {
+    self.loop_depth = self.loop_depth - 1
+  }
+}
+
+///|
+fn Resolver::expect_in_loop(self : Resolver, code : String, span : @diag.Span) -> Unit {
+  if self.loop_depth == 0 {
+    let msg = match code {
+      "S0036" => "break is only allowed inside loops"
+      "S0037" => "continue is only allowed inside loops"
+      _ => "loop control statement is not allowed here"
+    }
+    self.sink.push_error(code, msg, span)
+  }
+}
+
+///|
+fn Resolver::expect_label_symbol(self : Resolver, name : String, span : @diag.Span) -> Unit {
+  match self.lookup_symbol(name) {
+    Some(id) =>
+      if self.symbols[id].kind != Label {
+        self.sink.push_error("S0038", "goto/label target must be declared as label", span)
+      }
+    None => self.sink.push_error("S0002", "undefined symbol '\{name}'", span)
+  }
 }
 
 ///|
@@ -782,12 +819,17 @@ fn Resolver::resolve_stmt(self : Resolver, s : @ast.Spanned[@ast.Stmt]) -> Unit 
     }
     While(cond, body) => {
       let cty = self.infer_expr_type(cond)
-      self..expect_boolean(cty, cond.span).resolve_stmt(body)
+      self.expect_boolean(cty, cond.span)
+      self.enter_loop()
+      self.resolve_stmt(body)
+      self.leave_loop()
     }
     RepeatUntil(stmts, cond) => {
+      self.enter_loop()
       for st in stmts {
         self.resolve_stmt(st)
       }
+      self.leave_loop()
       let cty = self.infer_expr_type(cond)
       self.expect_boolean(cty, cond.span)
     }
@@ -815,7 +857,9 @@ fn Resolver::resolve_stmt(self : Resolver, s : @ast.Spanned[@ast.Stmt]) -> Unit 
       if !self.types.is_assignable_from(vty, tty) {
         self.sink.push_error("S0010", "for-range end type mismatch", to_.span)
       }
+      self.enter_loop()
       self.resolve_stmt(body)
+      self.leave_loop()
     }
     With(items, body) => {
       for it in items {
@@ -843,15 +887,13 @@ fn Resolver::resolve_stmt(self : Resolver, s : @ast.Spanned[@ast.Stmt]) -> Unit 
     Raise(Some(e)) => ignore(self.infer_expr_type(e))
     Raise(None) => ()
     Label(name, stmt) => {
-      let _ = self.use_symbol(name, s.span)
+      self.expect_label_symbol(name, s.span)
       self.resolve_stmt(stmt)
     }
-    Goto(name) => {
-      let _ = self.use_symbol(name, s.span)
-    }
+    Goto(name) => self.expect_label_symbol(name, s.span)
     Asm(_) => ()
-    Break => ()
-    Continue => ()
+    Break => self.expect_in_loop("S0036", s.span)
+    Continue => self.expect_in_loop("S0037", s.span)
     Exit(Some(e)) => {
       let ety = self.infer_expr_type(e)
       match self.current_return_type() {
