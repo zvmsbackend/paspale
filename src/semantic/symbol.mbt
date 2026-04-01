@@ -42,6 +42,7 @@ pub struct Resolver {
   sink : @diag.DiagSink
   scopes : Array[Scope]
   symbols : Array[Symbol]
+  proc_param_modes : Map[Int, Array[@ast.ParamMode]]
   mut current_scope : Int
   types : TypeRegistry
   return_type_stack : Array[TypeRef?]
@@ -101,6 +102,14 @@ fn Resolver::resolve_call(
   args : Array[@ast.Spanned[@ast.Expr]],
   span : @diag.Span,
 ) -> TypeRef {
+  let param_modes = match callee.node {
+    @ast.Name(name) =>
+      match self.lookup_symbol(name) {
+        Some(sym_id) => self.proc_param_modes.get(sym_id)
+        None => None
+      }
+    _ => None
+  }
   let callee_ty = self.infer_expr_type(callee)
   let arg_types = args.map(a => self.infer_expr_type(a))
 
@@ -114,11 +123,7 @@ fn Resolver::resolve_call(
           span,
         )
       }
-      let n = if params.length() < arg_types.length() {
-        params.length()
-      } else {
-        arg_types.length()
-      }
+      let n = @cmp.minimum(params.length(), arg_types.length())
       for i in 0..<n {
         if !self.types.is_assignable_from(params[i], arg_types[i]) {
           push_error(
@@ -127,6 +132,24 @@ fn Resolver::resolve_call(
             "argument type mismatch at index \{i}",
             args[i].span,
           )
+        }
+        match param_modes {
+          Some(modes) =>
+            if i < modes.length() {
+              match modes[i] {
+                Var | Out =>
+                  if !self.is_assignable_expr(args[i]) {
+                    push_error(
+                      self.sink,
+                      "S0030",
+                      "VAR/OUT argument must be assignable",
+                      args[i].span,
+                    )
+                  }
+                _ => ()
+              }
+            }
+          None => ()
         }
       }
       match ret {
@@ -323,8 +346,9 @@ fn push_error(
 pub fn Resolver::new(sink : @diag.DiagSink) -> Resolver {
   let r : Resolver = {
     sink,
-    scopes: [{ id: 0, parent: None, table: Map::new() }],
+    scopes: [{ id: 0, parent: None, table: {} }],
     symbols: [],
+    proc_param_modes: {},
     current_scope: 0,
     types: TypeRegistry::new(),
     return_type_stack: [],
@@ -336,6 +360,35 @@ pub fn Resolver::new(sink : @diag.DiagSink) -> Resolver {
 ///|
 fn Resolver::push_return_type(self : Resolver, ty : TypeRef?) -> Unit {
   self.return_type_stack.push(ty)
+}
+
+///|
+fn Resolver::is_assignable_expr(
+  self : Resolver,
+  e : @ast.Spanned[@ast.Expr],
+) -> Bool {
+  if e.node is Paren(inner) {
+    self.is_assignable_expr(inner)
+  } else {
+    e.node is (Name(_) | Index(_) | Field(_) | Unary(Deref, _))
+  }
+}
+
+///|
+fn Resolver::flatten_param_signature(
+  self : Resolver,
+  params : Array[@ast.Spanned[@ast.ParamDecl]],
+) -> (Array[TypeRef], Array[@ast.ParamMode]) {
+  let types = []
+  let modes = []
+  for p in params {
+    let ty = self.resolve_type_expr(p.node.ty)
+    for _n in p.node.names {
+      types.push(ty)
+      modes.push(p.node.mode)
+    }
+  }
+  (types, modes)
 }
 
 ///|
@@ -395,7 +448,7 @@ pub fn Resolver::symbols(self : Resolver) -> Array[Symbol] {
 ///|
 pub fn Resolver::enter_scope(self : Resolver) -> Int {
   let id = self.scopes.length()
-  self.scopes.push({ id, parent: Some(self.current_scope), table: Map::new() })
+  self.scopes.push({ id, parent: Some(self.current_scope), table: {} })
   self.current_scope = id
   id
 }
@@ -842,9 +895,13 @@ fn Resolver::resolve_decl(self : Resolver, d : @ast.Spanned[@ast.Decl]) -> Unit 
       }
     }
     @ast.ProcDecl(pd) => {
-      let param_types = pd.params.map(p => self.resolve_type_expr(p.node.ty))
+      let (param_types, param_modes) = self.flatten_param_signature(pd.params)
       let proc_ty = self.types.make_proc(param_types, None)
-      let _ = self.define_symbol(pd.name, Proc, Some(proc_ty), d.span)
+      let proc_id = self.define_symbol(pd.name, Proc, Some(proc_ty), d.span)
+      match proc_id {
+        Some(id) => self.proc_param_modes.set(id, param_modes)
+        None => ()
+      }
       match pd.body {
         Some(body) => {
           self.push_return_type(None)
@@ -863,10 +920,14 @@ fn Resolver::resolve_decl(self : Resolver, d : @ast.Spanned[@ast.Decl]) -> Unit 
       }
     }
     @ast.FuncDecl(fd) => {
-      let param_types = fd.params.map(p => self.resolve_type_expr(p.node.ty))
+      let (param_types, param_modes) = self.flatten_param_signature(fd.params)
       let ret = self.resolve_type_expr(fd.result_ty)
       let fn_ty = self.types.make_proc(param_types, Some(ret))
-      let _ = self.define_symbol(fd.name, Proc, Some(fn_ty), d.span)
+      let fn_id = self.define_symbol(fd.name, Proc, Some(fn_ty), d.span)
+      match fn_id {
+        Some(id) => self.proc_param_modes.set(id, param_modes)
+        None => ()
+      }
       match fd.body {
         Some(body) => {
           self.push_return_type(Some(ret))

@@ -30,6 +30,7 @@ pub struct Resolver {
   sink : @diag.DiagSink
   scopes : Array[Scope]
   symbols : Array[Symbol]
+  proc_param_modes : Map[Int, Array[@ast.ParamMode]]
   mut current_scope : Int
   types : TypeRegistry
   return_type_stack : Array[TypeRef?]

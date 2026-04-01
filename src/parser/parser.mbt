@@ -586,14 +586,14 @@ fn Parser::parse_param_list(
     return out
   }
   while !self.at_eof() {
-    let mode = if self.consume_word("VAR") {
-      @ast.Var
-    } else if self.consume_word("CONST") {
-      @ast.Const
+    let mode : @ast.ParamMode = if self.consume_kw(KwVar, "VAR") {
+      Var
+    } else if self.consume_kw(KwConst, "CONST") {
+      Const
     } else if self.consume_word("OUT") {
-      @ast.Out
+      Out
     } else {
-      @ast.Value
+      Value
     }
     let start = self.current_span()
     let names = [self.take_identifier()]

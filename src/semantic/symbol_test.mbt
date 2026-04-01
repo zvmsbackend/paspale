@@ -164,3 +164,33 @@ test "semantic reports duplicate record field declaration" {
 
   assert_true(has_diag_code(sink, "S0029"))
 }
+
+///|
+test "semantic reports VAR argument that is not assignable" {
+  let sink = @diag.new_sink()
+  let src = "program P; procedure Bump(var x: integer); begin x := x + 1; end; begin Bump(1); end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0030"))
+}
+
+///|
+test "semantic reports OUT argument that is not assignable" {
+  let sink = @diag.new_sink()
+  let src = "program P; procedure Fill(out x: integer); begin x := 1; end; begin Fill(1 + 2); end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0030"))
+}
+
+///|
+test "semantic flattens grouped parameter names for arity" {
+  let sink = @diag.new_sink()
+  let src = "program P; procedure Swap(var a, b: integer); begin end; var x, y: integer; begin Swap(x, y); end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_false(has_diag_code(sink, "S0016"))
+}

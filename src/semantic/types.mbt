@@ -85,7 +85,7 @@ pub fn TypeRegistry::new() -> TypeRegistry {
   types.push(Builtin(String))
   {
     types,
-    unresolved_forwards: Map::new(),
+    unresolved_forwards: {},
     builtin_void: { id: void_id },
     builtin_integer: { id: integer_id },
     builtin_real: { id: real_id },
