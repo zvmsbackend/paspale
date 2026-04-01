@@ -1,11 +1,32 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "sennenki/paspale/driver"
 
+import {
+  "sennenki/paspale/ast",
+  "sennenki/paspale/diag",
+  "sennenki/paspale/lexer",
+  "sennenki/paspale/semantic",
+}
+
 // Values
+pub fn compile_text(Int, String, @diag.DiagSink, CompileOptions) -> CompileOutput
+
+pub fn compile_tokens(Int, Array[@lexer.SpannedToken], @diag.DiagSink, CompileOptions) -> CompileOutput
 
 // Errors
 
 // Types and methods
+pub struct CompileOptions {
+  stop_on_error : Bool
+}
+pub fn CompileOptions::default() -> Self
+pub fn CompileOptions::new(Bool) -> Self
+
+pub struct CompileOutput {
+  tokens : Array[@lexer.SpannedToken]
+  unit : @ast.Spanned[@ast.CompilationUnit]?
+  resolver : @semantic.Resolver?
+}
 
 // Type aliases
 

@@ -375,7 +375,11 @@ fn Resolver::leave_loop(self : Resolver) -> Unit {
 }
 
 ///|
-fn Resolver::expect_in_loop(self : Resolver, code : String, span : @diag.Span) -> Unit {
+fn Resolver::expect_in_loop(
+  self : Resolver,
+  code : String,
+  span : @diag.Span,
+) -> Unit {
   if self.loop_depth == 0 {
     let msg = match code {
       "S0036" => "break is only allowed inside loops"
@@ -387,11 +391,17 @@ fn Resolver::expect_in_loop(self : Resolver, code : String, span : @diag.Span) -
 }
 
 ///|
-fn Resolver::expect_label_symbol(self : Resolver, name : String, span : @diag.Span) -> Unit {
+fn Resolver::expect_label_symbol(
+  self : Resolver,
+  name : String,
+  span : @diag.Span,
+) -> Unit {
   match self.lookup_symbol(name) {
     Some(id) =>
       if self.symbols[id].kind != Label {
-        self.sink.push_error("S0038", "goto/label target must be declared as label", span)
+        self.sink.push_error(
+          "S0038", "goto/label target must be declared as label", span,
+        )
       }
     None => self.sink.push_error("S0002", "undefined symbol '\{name}'", span)
   }

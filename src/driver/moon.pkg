@@ -1,1 +1,7 @@
-
+import {
+  "sennenki/paspale/ast",
+  "sennenki/paspale/diag",
+  "sennenki/paspale/lexer",
+  "sennenki/paspale/parser",
+  "sennenki/paspale/semantic",
+}
