@@ -17,9 +17,18 @@ pub fn compile_text(Int, String, @diag.DiagSink, CompileOptions) -> CompileOutpu
 
 pub fn compile_tokens(Int, Array[@lexer.SpannedToken], @diag.DiagSink, CompileOptions) -> CompileOutput
 
+pub fn emit_and_link(CompileOutput, String, String) -> BackendResult
+
+pub fn toolchain_plan(CompileOutput) -> ToolchainPlan?
+
 // Errors
 
 // Types and methods
+pub(all) enum BackendResult {
+  Ok(CompileOutput)
+  Err(String, CompileOutput)
+}
+
 pub struct CompileOptions {
   stop_on_error : Bool
 }
@@ -33,6 +42,9 @@ pub struct CompileOutput {
   ir : @ir.ModuleIr
   aasm_output : @x64.AsmData?
   optimize_report : @x64.OptimizeReport?
+  asm_path : String?
+  object_path : String?
+  executable_path : String?
   stages : Array[CompileStage]
 }
 
@@ -43,6 +55,9 @@ pub(all) enum CompileStage {
   FirstPass
   SecondPass
   Optimize
+  EmitAsm
+  Assemble
+  Link
 } derive(Eq, Show)
 
 pub struct ModuleGraph {
@@ -51,6 +66,14 @@ pub struct ModuleGraph {
 }
 pub fn ModuleGraph::direct_deps(Self, String) -> Array[String]
 pub fn ModuleGraph::topo_order(Self) -> Array[String]
+
+pub struct ToolchainPlan {
+  asm_path : String
+  object_path : String
+  executable_path : String
+  assemble_cmd : String
+  link_cmd : String
+}
 
 pub struct UnitNode {
   name : String

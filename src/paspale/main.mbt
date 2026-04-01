@@ -66,9 +66,40 @@ fn main {
   let output = @driver.compile_text(file_id, source, sink, options)
 
   if sink.length() == 0 {
-    println("ok: compile succeeded")
-    println("stages:")
-    println(output.stages.length().to_string())
+    let linked = @driver.emit_and_link(
+      output,
+      "_build",
+      @path.Path(path).basename().to_string(),
+    )
+    match linked {
+      Ok(done) => {
+        println("ok: compile/link succeeded")
+        println("stages:")
+        println(done.stages.length().to_string())
+        if done.asm_path is Some(p) {
+          println("asm: ")
+          println(p)
+        }
+        if done.object_path is Some(p) {
+          println("obj: ")
+          println(p)
+        }
+        if done.executable_path is Some(p) {
+          println("exe: ")
+          println(p)
+        }
+        if @driver.toolchain_plan(done) is Some(plan) {
+          println("assemble cmd: ")
+          println(plan.assemble_cmd)
+          println("link cmd: ")
+          println(plan.link_cmd)
+        }
+      }
+      Err(msg, _) => {
+        println("error: backend failed")
+        println(msg)
+      }
+    }
   } else {
     println(@diag.render_all(source_map, sink))
   }

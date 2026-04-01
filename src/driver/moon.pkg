@@ -1,4 +1,7 @@
 import {
+  "moonbitlang/core/string",
+  "moonbitlang/x/fs",
+  "moonbitlang/x/path",
   "sennenki/paspale/ast",
   "sennenki/paspale/codegen/x64",
   "sennenki/paspale/common",

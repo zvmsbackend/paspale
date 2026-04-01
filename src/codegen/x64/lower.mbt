@@ -20,21 +20,53 @@ fn expr_text(e : @ast.Spanned[@ast.Expr]) -> String {
 }
 
 ///|
+fn int_lit(e : @ast.Spanned[@ast.Expr]) -> String? {
+  match e.node {
+    Literal(Int(v)) => Some(v)
+    _ => None
+  }
+}
+
+///|
+fn emit_assign(
+  out : AsmData,
+  lhs : @ast.Spanned[@ast.Expr],
+  rhs : @ast.Spanned[@ast.Expr],
+  span : @diag.Span,
+) -> Unit {
+  match (lhs.node, rhs.node) {
+    (Name(dst), Name(src)) if dst == src =>
+      out.emit(Tai::new(Instruction, "mov", ["eax", "eax"]).with_span(span))
+    (Name(_), _) =>
+      if int_lit(rhs) is Some(v) {
+        out.emit(Tai::new(Instruction, "mov", ["eax", v]).with_span(span))
+      } else {
+        out.emit(
+          Tai::new(Comment, "; assign \{expr_text(lhs)} := \{expr_text(rhs)}", []).with_span(
+            span,
+          ),
+        )
+      }
+    _ =>
+      out.emit(
+        Tai::new(Comment, "; assign \{expr_text(lhs)} := \{expr_text(rhs)}", []).with_span(
+          span,
+        ),
+      )
+  }
+}
+
+///|
 fn emit_stmt(out : AsmData, s : @ast.Spanned[@ast.Stmt]) -> Unit {
   match s.node {
     Compound(stmts) =>
       for st in stmts {
         emit_stmt(out, st)
       }
-    Assign(lhs, rhs) =>
-      out.emit(
-        Tai::new(Instruction, "mov", [expr_text(lhs), expr_text(rhs)]).with_span(
-          s.span,
-        ),
-      )
+    Assign(lhs, rhs) => emit_assign(out, lhs, rhs, s.span)
     Call(callee, _) =>
       out.emit(
-        Tai::new(Instruction, "call", [expr_text(callee)]).with_span(s.span),
+        Tai::new(Comment, "; call \{expr_text(callee)}", []).with_span(s.span),
       )
     If(_, then_s, else_s) => {
       out.emit(Tai::new(Comment, "; if", []).with_span(s.span))
@@ -92,8 +124,12 @@ fn emit_stmt(out : AsmData, s : @ast.Spanned[@ast.Stmt]) -> Unit {
     Break => out.emit(Tai::new(Instruction, "break", []).with_span(s.span))
     Continue =>
       out.emit(Tai::new(Instruction, "continue", []).with_span(s.span))
-    Exit(Some(e)) =>
-      out.emit(Tai::new(Instruction, "retv", [expr_text(e)]).with_span(s.span))
+    Exit(Some(e)) => {
+      if int_lit(e) is Some(v) {
+        out.emit(Tai::new(Instruction, "mov", ["eax", v]).with_span(s.span))
+      }
+      out.emit(Tai::new(Instruction, "ret", []).with_span(s.span))
+    }
     Exit(None) => out.emit(Tai::new(Instruction, "ret", []).with_span(s.span))
     Empty | Error => ()
   }
@@ -118,6 +154,7 @@ pub fn lower_compilation_unit(
   let out = AsmData::new(name)
   out.switch(Procedures)
   out.emit(Tai::new(Section, ".text", []).with_span(cu.span))
+  out.emit(Tai::new(Label, "main", []).with_span(cu.span))
 
   match cu.node {
     ProgramUnit(p) => {
@@ -142,6 +179,8 @@ pub fn lower_compilation_unit(
       }
     }
   }
+
+  out.emit(Tai::new(Instruction, "ret", []).with_span(cu.span))
 
   out
 }

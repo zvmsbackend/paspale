@@ -3,6 +3,7 @@ import {
   "sennenki/paspale/diag",
   "sennenki/paspale/driver",
   "moonbitlang/x/fs",
+  "moonbitlang/x/path",
 }
 
 options(
