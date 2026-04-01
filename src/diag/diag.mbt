@@ -11,7 +11,12 @@ pub fn Span::new(file_id : Int, start : Int, end : Int) -> Span {
 }
 
 ///|
-pub fn Span::len(self : Span) -> Int {
+pub fn Span::join(a : Span, b : Span) -> Span {
+  Span::new(a.file_id, a.start, b.end)
+}
+
+///|
+pub fn Span::length(self : Span) -> Int {
   if self.end > self.start {
     self.end - self.start
   } else {
@@ -55,7 +60,7 @@ pub fn Label::secondary(span : Span, message : String) -> Label {
 }
 
 ///|
-pub(all) struct Diagnostic {
+pub struct Diagnostic {
   severity : Severity
   code : String
   message : String
@@ -125,7 +130,7 @@ struct SourceMap {
 }
 
 ///|
-pub fn new_source_map() -> SourceMap {
+pub fn SourceMap::new() -> SourceMap {
   { files: [] }
 }
 
@@ -190,7 +195,7 @@ struct DiagSink {
 }
 
 ///|
-pub fn new_sink() -> DiagSink {
+pub fn DiagSink::new() -> DiagSink {
   { diagnostics: [] }
 }
 
@@ -200,19 +205,58 @@ pub fn DiagSink::push(self : DiagSink, d : Diagnostic) -> Unit {
 }
 
 ///|
-pub fn DiagSink::len(self : DiagSink) -> Int {
+pub fn DiagSink::push_with(
+  self : DiagSink,
+  severity : Severity,
+  code : String,
+  message : String,
+  span : Span,
+) -> Unit {
+  self.push(
+    Diagnostic::new(severity, code, message).with_label(
+      Label::primary(span, "here"),
+    ),
+  )
+}
+
+///|
+pub fn DiagSink::push_error(
+  self : DiagSink,
+  code : String,
+  message : String,
+  span : Span,
+) -> Unit {
+  self.push_with(Error, code, message, span)
+}
+
+///|
+pub fn DiagSink::push_warning(
+  self : DiagSink,
+  code : String,
+  message : String,
+  span : Span,
+) -> Unit {
+  self.push_with(Warning, code, message, span)
+}
+
+///|
+pub fn DiagSink::push_note(
+  self : DiagSink,
+  code : String,
+  message : String,
+  span : Span,
+) -> Unit {
+  self.push_with(Note, code, message, span)
+}
+
+///|
+pub fn DiagSink::length(self : DiagSink) -> Int {
   self.diagnostics.length()
 }
 
 ///|
 pub fn DiagSink::has_error(self : DiagSink) -> Bool {
-  for d in self.diagnostics {
-    match d.severity {
-      Error => return true
-      _ => ()
-    }
-  }
-  false
+  self.diagnostics.iter().any(d => d.severity is Error)
 }
 
 ///|
@@ -259,10 +303,7 @@ pub fn Diagnostic::render(self : Diagnostic, source_map : SourceMap) -> String {
   let src = source_map.line_text(lbl.span.file_id, line_no)
   out..write_char('\n').write_string(src)
 
-  let mut mark_len = lbl.span.len()
-  if mark_len <= 0 {
-    mark_len = 1
-  }
+  let mark_len = if lbl.span.length() <= 0 { 1 } else { lbl.span.length() }
   let marker = " ".repeat(column_no - 1) + "^" + "~".repeat(mark_len - 1)
   out..write_char('\n').write_string(marker)
   match lbl.message {
@@ -285,7 +326,7 @@ pub fn render_all(source_map : SourceMap, sink : DiagSink) -> String {
   let ds = sink.all()
   for i in 0..<ds.length() {
     if i > 0 {
-      out.write_object("\n\n")
+      out.write_string("\n\n")
     }
     out.write_string(ds[i].render(source_map))
   }

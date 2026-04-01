@@ -1,6 +1,6 @@
 ///|
 test "line/column uses character offsets" {
-  let sm = @diag.new_source_map()
+  let sm = @diag.SourceMap::new()
   let file = sm.add_file("sample.pas", "ab中\nxy")
 
   assert_eq(sm.line_col(file, 0), (1, 1))
@@ -11,10 +11,10 @@ test "line/column uses character offsets" {
 
 ///|
 test "render one diagnostic" {
-  let sm = @diag.new_source_map()
+  let sm = @diag.SourceMap::new()
   let file = sm.add_file("main.pas", "begin\n  x := 1\nend")
   let span = @diag.Span::new(file, 8, 9)
-  let d = @diag.Diagnostic::new(@diag.Error, "E0001", "unknown identifier")
+  let d = @diag.Diagnostic::new(Error, "E0001", "unknown identifier")
     .with_label(@diag.Label::primary(span, "cannot resolve symbol"))
     .with_note("did you mean 'y'?")
 

@@ -26,15 +26,7 @@ pub(all) struct FieldDef {
   ty : TypeRef
 } derive(Eq, Show)
 
-pub struct Resolver {
-  sink : @diag.DiagSink
-  scopes : Array[Scope]
-  symbols : Array[Symbol]
-  proc_param_modes : Map[Int, Array[@ast.ParamMode]]
-  mut current_scope : Int
-  types : TypeRegistry
-  return_type_stack : Array[TypeRef?]
-}
+type Resolver
 pub fn Resolver::define_symbol(Self, String, SymKind, TypeRef?, @diag.Span) -> Int?
 pub fn Resolver::enter_scope(Self) -> Int
 pub fn Resolver::leave_scope(Self) -> Unit
@@ -42,12 +34,6 @@ pub fn Resolver::lookup_symbol(Self, String) -> Int?
 pub fn Resolver::new(@diag.DiagSink) -> Self
 pub fn Resolver::resolve_compilation_unit(Self, @ast.Spanned[@ast.CompilationUnit]) -> Unit
 pub fn Resolver::symbols(Self) -> Array[Symbol]
-
-pub struct Scope {
-  id : Int
-  parent : Int?
-  table : Map[String, Int]
-}
 
 pub(all) enum SymKind {
   Var
@@ -59,15 +45,7 @@ pub(all) enum SymKind {
   Param
 } derive(Eq, Show)
 
-pub struct Symbol {
-  id : Int
-  name : String
-  kind : SymKind
-  ty : TypeRef?
-  owner_scope : Int
-  flags : Int
-  decl_span : @diag.Span
-} derive(Eq, Show)
+type Symbol derive(Eq, Show)
 
 pub(all) enum Type {
   Builtin(BuiltinType)
@@ -84,10 +62,7 @@ pub(all) enum Type {
   Error
 } derive(Eq, Show)
 
-pub struct TypeRef {
-  id : Int
-} derive(Eq, Show)
-pub fn TypeRef::eq(Self, Self) -> Bool
+type TypeRef derive(Eq, Show)
 
 type TypeRegistry
 pub fn TypeRegistry::array_element_type(Self, TypeRef) -> TypeRef?

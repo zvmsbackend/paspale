@@ -5,7 +5,7 @@ fn has_diag_code(sink : @diag.DiagSink, code : String) -> Bool {
 
 ///|
 test "semantic reports duplicate symbol in same scope" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; var x: integer; x: integer; begin end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -15,7 +15,7 @@ test "semantic reports duplicate symbol in same scope" {
 
 ///|
 test "semantic reports undefined symbol usage" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; begin x := 1; end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -25,7 +25,7 @@ test "semantic reports undefined symbol usage" {
 
 ///|
 test "semantic handles nested scope shadowing" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; var x: integer; procedure Foo(x: integer); begin x := 1; end; begin x := 2; Foo(x); end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -36,7 +36,7 @@ test "semantic handles nested scope shadowing" {
 
 ///|
 test "semantic reports unknown named type" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; var x: UnknownType; begin end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -46,7 +46,7 @@ test "semantic reports unknown named type" {
 
 ///|
 test "semantic reports assignment type mismatch" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; var i: integer; s: string; begin i := s; end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -56,7 +56,7 @@ test "semantic reports assignment type mismatch" {
 
 ///|
 test "semantic reports call argument count mismatch" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; procedure Foo(a: integer); begin end; begin Foo(); end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -66,7 +66,7 @@ test "semantic reports call argument count mismatch" {
 
 ///|
 test "semantic reports call argument type mismatch" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; procedure Foo(a: integer); begin end; begin Foo(1.5); end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -76,7 +76,7 @@ test "semantic reports call argument type mismatch" {
 
 ///|
 test "semantic checks record field access" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; type R = record x: integer; end; var r: R; begin r.x := 1; end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -87,7 +87,7 @@ test "semantic checks record field access" {
 
 ///|
 test "semantic reports unknown record field" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; type R = record x: integer; end; var r: R; begin r.y := 1; end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -97,7 +97,7 @@ test "semantic reports unknown record field" {
 
 ///|
 test "semantic reports non-ordinal array index" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; type A = array[1..10] of integer; var a: A; begin a[1.5] := 1; end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -107,7 +107,7 @@ test "semantic reports non-ordinal array index" {
 
 ///|
 test "semantic checks exit expression type in function" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; function F: integer; begin exit('x'); end; begin end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -117,7 +117,7 @@ test "semantic checks exit expression type in function" {
 
 ///|
 test "semantic rejects exit expression in procedure" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; procedure Q; begin exit(1); end; begin end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -127,7 +127,7 @@ test "semantic rejects exit expression in procedure" {
 
 ///|
 test "semantic reports array index type declaration without subrange" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; type A = array[1.5] of integer; begin end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -137,7 +137,7 @@ test "semantic reports array index type declaration without subrange" {
 
 ///|
 test "semantic reports invalid subrange bound order" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; type R = 10..1; begin end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -147,7 +147,7 @@ test "semantic reports invalid subrange bound order" {
 
 ///|
 test "semantic reports non-ordinal set element type" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; type S = set of real; begin end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -157,7 +157,7 @@ test "semantic reports non-ordinal set element type" {
 
 ///|
 test "semantic reports duplicate record field declaration" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; type R = record x: integer; x: real; end; begin end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -167,7 +167,7 @@ test "semantic reports duplicate record field declaration" {
 
 ///|
 test "semantic reports VAR argument that is not assignable" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; procedure Bump(var x: integer); begin x := x + 1; end; begin Bump(1); end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -177,7 +177,7 @@ test "semantic reports VAR argument that is not assignable" {
 
 ///|
 test "semantic reports OUT argument that is not assignable" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; procedure Fill(out x: integer); begin x := 1; end; begin Fill(1 + 2); end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)
@@ -187,7 +187,7 @@ test "semantic reports OUT argument that is not assignable" {
 
 ///|
 test "semantic flattens grouped parameter names for arity" {
-  let sink = @diag.new_sink()
+  let sink = @diag.DiagSink::new()
   let src = "program P; procedure Swap(var a, b: integer); begin end; var x, y: integer; begin Swap(x, y); end."
   let cu = @parser.parse_text(0, src, sink)
   let _ = @semantic.analyze(cu, sink)

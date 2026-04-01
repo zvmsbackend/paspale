@@ -1,8 +1,6 @@
 ///|
 /// Internal reference to a type in the registry
-pub struct TypeRef {
-  id : Int
-} derive(Show, Eq)
+struct TypeRef(Int) derive(Show, Eq)
 
 ///|
 /// Built-in types
@@ -86,12 +84,12 @@ pub fn TypeRegistry::new() -> TypeRegistry {
   {
     types,
     unresolved_forwards: {},
-    builtin_void: { id: void_id },
-    builtin_integer: { id: integer_id },
-    builtin_real: { id: real_id },
-    builtin_boolean: { id: boolean_id },
-    builtin_char: { id: char_id },
-    builtin_string: { id: string_id },
+    builtin_void: void_id,
+    builtin_integer: integer_id,
+    builtin_real: real_id,
+    builtin_boolean: boolean_id,
+    builtin_char: char_id,
+    builtin_string: string_id,
   }
 }
 
@@ -100,17 +98,13 @@ pub fn TypeRegistry::new() -> TypeRegistry {
 pub fn TypeRegistry::register(self : TypeRegistry, ty : Type) -> TypeRef {
   let id = self.types.length()
   self.types.push(ty)
-  { id, }
+  id
 }
 
 ///|
 /// Get a type by reference
 pub fn TypeRegistry::get(self : TypeRegistry, tref : TypeRef) -> Type {
-  if tref.id < 0 || tref.id >= self.types.length() {
-    Error
-  } else {
-    self.types[tref.id]
-  }
+  self.types.get(tref.0).unwrap_or(Error)
 }
 
 ///|
@@ -120,8 +114,8 @@ pub fn TypeRegistry::set(
   tref : TypeRef,
   ty : Type,
 ) -> Unit {
-  if tref.id >= 0 && tref.id < self.types.length() {
-    self.types[tref.id] = ty
+  if tref.0 >= 0 && tref.0 < self.types.length() {
+    self.types[tref.0] = ty
   }
 }
 
@@ -399,7 +393,7 @@ pub fn TypeRegistry::make_forward(
   if self.unresolved_forwards.get(name) is Some(refs) {
     refs.push(tref)
   } else {
-    self.unresolved_forwards.set(name, [tref])
+    self.unresolved_forwards[name] = [tref]
   }
   tref
 }
@@ -445,12 +439,6 @@ pub fn TypeRegistry::unresolved_names(self : TypeRegistry) -> Array[String] {
 }
 
 ///|
-/// Check if two type refs are equal (by id)
-pub fn TypeRef::eq(self : TypeRef, other : TypeRef) -> Bool {
-  self.id == other.id
-}
-
-///|
 /// Check if a type is a numeric type (integer or real)
 pub fn TypeRegistry::is_numeric(self : TypeRegistry, tref : TypeRef) -> Bool {
   self.get(tref) is Builtin(Integer | Real)
@@ -477,7 +465,7 @@ pub fn TypeRegistry::is_string(self : TypeRegistry, tref : TypeRef) -> Bool {
 ///|
 /// Check if a type is an array type (any kind)
 pub fn TypeRegistry::is_array(self : TypeRegistry, tref : TypeRef) -> Bool {
-  self.get(tref) is (StaticArray(_, _, _, _) | OpenArray(_) | DynamicArray(_))
+  self.get(tref) is (StaticArray(_) | OpenArray(_) | DynamicArray(_))
 }
 
 ///|
@@ -562,7 +550,7 @@ pub fn TypeRegistry::is_assignable_from(
   let source_ty = self.get(source)
 
   // Same type (nominal equality)
-  if target.id == source.id {
+  if target == source {
     return true
   }
 
@@ -573,7 +561,7 @@ pub fn TypeRegistry::is_assignable_from(
       self.get(base) is Builtin(Integer)
     (Subrange(base, _, _), Builtin(Integer)) =>
       self.get(base) is Builtin(Integer)
-    (Subrange(t_base, _, _), Subrange(s_base, _, _)) => t_base.id == s_base.id
+    (Subrange(t_base, _, _), Subrange(s_base, _, _)) => t_base == s_base
 
     // Real compatibility: integer can be assigned to real
     (Builtin(Real), Builtin(Integer | Real)) => true
@@ -600,17 +588,14 @@ pub fn TypeRegistry::is_assignable_from(
       self.is_assignable_from(t_elem, s_elem)
 
     // Dynamic array to dynamic array (same element type)
-    (DynamicArray(t_elem), DynamicArray(s_elem)) => t_elem.id == s_elem.id
+    (DynamicArray(t_elem), DynamicArray(s_elem)) => t_elem == s_elem
 
     // Static array to static array (same type)
     (
       StaticArray(t_idx, t_low, t_high, t_elem),
       StaticArray(s_idx, s_low, s_high, s_elem),
     ) =>
-      t_idx.id == s_idx.id &&
-      t_low == s_low &&
-      t_high == s_high &&
-      t_elem.id == s_elem.id
+      t_idx == s_idx && t_low == s_low && t_high == s_high && t_elem == s_elem
 
     // Error type accepts anything (error recovery)
     (Error, _) => true
@@ -630,7 +615,7 @@ pub fn TypeRegistry::is_compatible_with(
   let ty2 = self.get(t2)
 
   // Same type
-  if t1.id == t2.id {
+  if t1 == t2 {
     return true
   }
 

@@ -1,12 +1,6 @@
 ///|
-fn ascii_upper(s : String) -> String {
-  String::from_iter(s.iter().map(Char::to_ascii_uppercase))
-}
-
-///|
 fn classify_identifier(ident : StringView) -> Token {
-  let ident_s = ident.to_string()
-  match ascii_upper(ident_s) {
+  match @common.ascii_upper(ident) {
     "PROGRAM" => KwProgram
     "UNIT" => KwUnit
     "USES" => KwUses
@@ -29,7 +23,7 @@ fn classify_identifier(ident : StringView) -> Token {
     "UNTIL" => KwUntil
     "CASE" => KwCase
     "OF" => KwOf
-    _ => Identifier(ident_s)
+    _ => Identifier(ident.to_string())
   }
 }
 
@@ -48,13 +42,12 @@ fn read_brace_comment(rest : StringView) -> (String, Bool) {
 ///|
 fn read_old_comment(rest : StringView) -> (String, Bool) {
   let out = StringBuilder::new()
-  let mut prev_star = false
-  for c in rest {
+  for c in rest; prev_star = false {
     out.write_char(c)
     if prev_star && c == ')' {
       return (out.to_string(), true)
     }
-    prev_star = c == '*'
+    continue c == '*'
   }
   (out.to_string(), false)
 }
@@ -168,10 +161,8 @@ pub fn tokenize(
   sink : @diag.DiagSink,
 ) -> Array[SpannedToken] {
   let tokens = []
-  let mut rest = source[:]
-  let mut offset = 0
 
-  while rest != "" {
+  for rest = source[:], offset = 0; rest != ""; {
     match rest {
       ['{', ..] => {
         let (consumed, closed) = read_brace_comment(rest)
@@ -186,9 +177,7 @@ pub fn tokenize(
             "unterminated { ... } comment",
           )
         }
-        offset = offset + len
-        rest = rest[len:]
-        continue
+        continue rest[len:], offset + len
       }
       ['(', '*', ..] => {
         let (consumed, closed) = read_old_comment(rest)
@@ -203,9 +192,7 @@ pub fn tokenize(
             "unterminated (* ... *) comment",
           )
         }
-        offset = offset + len
-        rest = rest[len:]
-        continue
+        continue rest[len:], offset + len
       }
       ['\'', ..] => {
         let (len, closed) = read_string_literal(rest)
@@ -218,9 +205,7 @@ pub fn tokenize(
             "L0004",
             "unterminated string literal",
           )
-          offset = offset + len
-          rest = rest[len:]
-          continue
+          continue rest[len:], offset + len
         }
         push_token(
           tokens,
@@ -229,27 +214,19 @@ pub fn tokenize(
           offset,
           offset + len,
         )
-        offset = offset + len
-        rest = rest[len:]
-        continue
+        continue rest[len:], offset + len
       }
       _ => ()
     }
 
-    let mut matched = false
-
     lexmatch rest with longest {
       ("[ \t\r\n]+" as ws, r) => {
         let len = ws.char_length()
-        offset = offset + len
-        rest = r
-        matched = true
+        continue r, offset + len
       }
       ("//[^\n\r]*" as cmt, r) => {
         let len = cmt.char_length()
-        offset = offset + len
-        rest = r
-        matched = true
+        continue r, offset + len
       }
       (
         "\.\.\.|\.\.|:=|:=|<=|>=|<>|\+|-|\*|/|=|<|>|:|;|,|\.|\(|\)|\[|\]|\^|@" as m,
@@ -263,9 +240,7 @@ pub fn tokenize(
           offset,
           offset + len,
         )
-        offset = offset + len
-        rest = r
-        matched = true
+        continue r, offset + len
       }
       ("[_[:alpha:]][_[:alnum:]]*" as ident, r) => {
         let len = ident.char_length()
@@ -276,9 +251,7 @@ pub fn tokenize(
           offset,
           offset + len,
         )
-        offset = offset + len
-        rest = r
-        matched = true
+        continue r, offset + len
       }
       ("\$[[:xdigit:]]+" as n, r) => {
         let len = n.char_length()
@@ -289,9 +262,7 @@ pub fn tokenize(
           offset,
           offset + len,
         )
-        offset = offset + len
-        rest = r
-        matched = true
+        continue r, offset + len
       }
       ("%[01]+" as n, r) => {
         let len = n.char_length()
@@ -302,9 +273,7 @@ pub fn tokenize(
           offset,
           offset + len,
         )
-        offset = offset + len
-        rest = r
-        matched = true
+        continue r, offset + len
       }
       ("&[0-7]+" as n, r) => {
         let len = n.char_length()
@@ -315,9 +284,7 @@ pub fn tokenize(
           offset,
           offset + len,
         )
-        offset = offset + len
-        rest = r
-        matched = true
+        continue r, offset + len
       }
       ("[[:digit:]]+\.[[:digit:]]+" as n, r) => {
         let len = n.char_length()
@@ -328,9 +295,7 @@ pub fn tokenize(
           offset,
           offset + len,
         )
-        offset = offset + len
-        rest = r
-        matched = true
+        continue r, offset + len
       }
       ("[[:digit:]]+[eE][[:digit:]]+" as n, r) => {
         let len = n.char_length()
@@ -341,9 +306,7 @@ pub fn tokenize(
           offset,
           offset + len,
         )
-        offset = offset + len
-        rest = r
-        matched = true
+        continue r, offset + len
       }
       ("[[:digit:]]+" as n, r) => {
         let len = n.char_length()
@@ -354,31 +317,26 @@ pub fn tokenize(
           offset,
           offset + len,
         )
-        offset = offset + len
-        rest = r
-        matched = true
+        continue r, offset + len
       }
       _ => ()
     }
 
-    if !matched {
-      let bad = match rest.get_char(0) {
-        Some(c) => "\{c}"
-        None => ""
-      }
-      push_lexer_error(
-        sink,
-        file_id,
-        offset,
-        offset + 1,
-        "L0001",
-        "illegal character '\{bad}'",
-      )
-      rest = rest[1:]
-      offset = offset + 1
+    let bad = match rest.get_char(0) {
+      Some(c) => "\{c}"
+      None => ""
     }
+    push_lexer_error(
+      sink,
+      file_id,
+      offset,
+      offset + 1,
+      "L0001",
+      "illegal character '\{bad}'",
+    )
+    continue rest[1:], offset + 1
+  } nobreak {
+    push_token(tokens, Eof, file_id, offset, offset)
+    tokens
   }
-
-  push_token(tokens, Eof, file_id, offset, offset)
-  tokens
 }

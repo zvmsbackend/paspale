@@ -15,8 +15,8 @@ test "type ref equality" {
   let int1 = reg.integer_type()
   let int2 = reg.integer_type()
   let real = reg.real_type()
-  assert_true(int1.eq(int2))
-  assert_false(int1.eq(real))
+  assert_true(int1 == int2)
+  assert_false(int1 == real)
 }
 
 ///|
@@ -24,7 +24,7 @@ test "create pointer type" {
   let reg = TypeRegistry::new()
   let ptr_int = reg.make_pointer(reg.integer_type())
   match reg.get(ptr_int) {
-    Pointer(base) => assert_true(base.eq(reg.integer_type()))
+    Pointer(base) => assert_true(base == reg.integer_type())
     _ => fail("expected pointer type")
   }
 }
@@ -37,10 +37,10 @@ test "create static array type" {
   assert_true(reg.is_array(arr))
   match reg.get(arr) {
     StaticArray(idx, low, high, elem) => {
-      assert_true(idx.eq(reg.integer_type()))
+      assert_true(idx == reg.integer_type())
       assert_eq(low, 1)
       assert_eq(high, 10)
-      assert_true(elem.eq(reg.string_type()))
+      assert_true(elem == reg.string_type())
     }
     _ => fail("expected static array")
   }
@@ -53,7 +53,7 @@ test "create open array type" {
   assert_true(reg.is_open_array(arr))
   assert_true(reg.is_array(arr))
   match reg.get(arr) {
-    OpenArray(elem) => assert_true(elem.eq(reg.integer_type()))
+    OpenArray(elem) => assert_true(elem == reg.integer_type())
     _ => fail("expected open array")
   }
 }
@@ -65,7 +65,7 @@ test "create dynamic array type" {
   assert_true(reg.is_dynamic_array(arr))
   assert_true(reg.is_array(arr))
   match reg.get(arr) {
-    DynamicArray(elem) => assert_true(elem.eq(reg.integer_type()))
+    DynamicArray(elem) => assert_true(elem == reg.integer_type())
     _ => fail("expected dynamic array")
   }
 }
@@ -84,17 +84,17 @@ test "array element type" {
   let int_type = reg.integer_type()
 
   if reg.array_element_type(static_arr) is Some(elem) {
-    assert_true(elem.eq(reg.real_type()))
+    assert_true(elem == reg.real_type())
   } else {
     fail("expected element type")
   }
   if reg.array_element_type(open_arr) is Some(elem) {
-    assert_true(elem.eq(reg.boolean_type()))
+    assert_true(elem == reg.boolean_type())
   } else {
     fail("expected element type")
   }
   if reg.array_element_type(dyn_arr) is Some(elem) {
-    assert_true(elem.eq(reg.char_type()))
+    assert_true(elem == reg.char_type())
   } else {
     fail("expected element type")
   }
@@ -156,7 +156,7 @@ test "create set type" {
   let reg = TypeRegistry::new()
   let set_ty = reg.make_set(reg.char_type())
   match reg.get(set_ty) {
-    Set(elem) => assert_true(elem.eq(reg.char_type()))
+    Set(elem) => assert_true(elem == reg.char_type())
     _ => fail("expected set type")
   }
 }
@@ -167,7 +167,7 @@ test "create subrange type" {
   let subrange = reg.make_subrange(reg.integer_type(), 1, 100)
   match reg.get(subrange) {
     Subrange(base, low, high) => {
-      assert_true(base.eq(reg.integer_type()))
+      assert_true(base == reg.integer_type())
       assert_eq(low, 1)
       assert_eq(high, 100)
     }
@@ -245,10 +245,10 @@ test "create proc type" {
   match reg.get(proc_ty) {
     Proc(p, r) => {
       assert_eq(p.length(), 2)
-      assert_true(p[0].eq(reg.integer_type()))
-      assert_true(p[1].eq(reg.real_type()))
+      assert_true(p[0] == reg.integer_type())
+      assert_true(p[1] == reg.real_type())
       match r {
-        Some(ret) => assert_true(ret.eq(reg.boolean_type()))
+        Some(ret) => assert_true(ret == reg.boolean_type())
         None => fail("expected return type")
       }
     }

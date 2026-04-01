@@ -3,6 +3,7 @@ import {
   "moonbitlang/core/cmp",
   "sennenki/paspale/ast",
   "sennenki/paspale/diag",
+  "sennenki/paspale/common",
 }
 
 import {

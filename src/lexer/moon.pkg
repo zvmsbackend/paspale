@@ -1,3 +1,4 @@
 import {
   "sennenki/paspale/diag",
+  "sennenki/paspale/common",
 }

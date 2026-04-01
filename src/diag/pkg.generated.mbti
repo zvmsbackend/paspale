@@ -2,10 +2,6 @@
 package "sennenki/paspale/diag"
 
 // Values
-pub fn new_sink() -> DiagSink
-
-pub fn new_source_map() -> SourceMap
-
 pub fn render_all(SourceMap, DiagSink) -> String
 
 // Errors
@@ -14,10 +10,15 @@ pub fn render_all(SourceMap, DiagSink) -> String
 type DiagSink
 pub fn DiagSink::all(Self) -> Array[Diagnostic]
 pub fn DiagSink::has_error(Self) -> Bool
-pub fn DiagSink::len(Self) -> Int
+pub fn DiagSink::length(Self) -> Int
+pub fn DiagSink::new() -> Self
 pub fn DiagSink::push(Self, Diagnostic) -> Unit
+pub fn DiagSink::push_error(Self, String, String, Span) -> Unit
+pub fn DiagSink::push_note(Self, String, String, Span) -> Unit
+pub fn DiagSink::push_warning(Self, String, String, Span) -> Unit
+pub fn DiagSink::push_with(Self, Severity, String, String, Span) -> Unit
 
-pub(all) struct Diagnostic {
+pub struct Diagnostic {
   severity : Severity
   code : String
   message : String
@@ -50,6 +51,7 @@ type SourceMap
 pub fn SourceMap::add_file(Self, String, String) -> Int
 pub fn SourceMap::line_col(Self, Int, Int) -> (Int, Int)
 pub fn SourceMap::line_text(Self, Int, Int) -> String
+pub fn SourceMap::new() -> Self
 pub fn SourceMap::path(Self, Int) -> String
 
 pub struct Span {
@@ -57,7 +59,8 @@ pub struct Span {
   start : Int
   end : Int
 } derive(Eq, Show)
-pub fn Span::len(Self) -> Int
+pub fn Span::join(Self, Self) -> Self
+pub fn Span::length(Self) -> Int
 pub fn Span::new(Int, Int, Int) -> Self
 
 // Type aliases

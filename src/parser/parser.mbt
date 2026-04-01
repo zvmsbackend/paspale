@@ -1,14 +1,4 @@
 ///|
-fn ascii_upper(s : String) -> String {
-  String::from_iter(s.iter().map(Char::to_ascii_uppercase))
-}
-
-///|
-fn @diag.Span::join(a : @diag.Span, b : @diag.Span) -> @diag.Span {
-  @diag.Span::new(a.file_id, a.start, b.end)
-}
-
-///|
 struct Parser {
   tokens : Array[@lexer.SpannedToken]
   sink : @diag.DiagSink
@@ -22,10 +12,9 @@ fn Parser::at_eof(self : Parser) -> Bool {
 
 ///|
 fn Parser::current(self : Parser) -> @lexer.SpannedToken {
-  if self.pos < self.tokens.length() {
-    self.tokens[self.pos]
-  } else {
-    self.tokens[self.tokens.length() - 1]
+  match self.tokens.get(self.pos) {
+    Some(tok) => tok
+    None => self.tokens[self.tokens.length() - 1]
   }
 }
 
@@ -36,11 +25,9 @@ fn Parser::current_span(self : Parser) -> @diag.Span {
 
 ///|
 fn Parser::peek_kind(self : Parser, lookahead : Int) -> @lexer.TokenKind {
-  let idx = self.pos + lookahead
-  if idx < self.tokens.length() {
-    self.tokens[idx].kind()
-  } else {
-    Eof
+  match self.tokens.get(self.pos + lookahead) {
+    Some(tok) => tok.kind()
+    None => Eof
   }
 }
 
@@ -48,21 +35,21 @@ fn Parser::peek_kind(self : Parser, lookahead : Int) -> @lexer.TokenKind {
 fn Parser::bump(self : Parser) -> @lexer.SpannedToken {
   let t = self.current()
   if self.pos + 1 < self.tokens.length() {
-    self.pos = self.pos + 1
+    self.pos += 1
   }
   t
 }
 
 ///|
-fn token_is_word(tok : @lexer.Token, word : String) -> Bool {
+fn @lexer.Token::is_word(tok : @lexer.Token, word : String) -> Bool {
   match tok {
-    Identifier(s) => ascii_upper(s) == word
+    Identifier(s) => @common.ascii_upper(s) == word
     _ => false
   }
 }
 
 ///|
-fn token_text(tok : @lexer.Token) -> String {
+fn @lexer.Token::text(tok : @lexer.Token) -> String {
   match tok {
     Identifier(s) => s
     IntConst(s) => s
@@ -119,16 +106,12 @@ fn token_text(tok : @lexer.Token) -> String {
 
 ///|
 fn Parser::is_word(self : Parser, word : String) -> Bool {
-  token_is_word(self.current().token, word)
+  self.current().token.is_word(word)
 }
 
 ///|
-fn Parser::is_kind_or_word(
-  self : Parser,
-  kind : @lexer.TokenKind,
-  word : String,
-) -> Bool {
-  self.current().kind() == kind || self.is_word(word)
+fn Parser::is_kind(self : Parser, kind : @lexer.TokenKind) -> Bool {
+  self.current().kind() == kind
 }
 
 ///|
@@ -149,15 +132,6 @@ fn Parser::consume_kind(self : Parser, kind : @lexer.TokenKind) -> Bool {
   } else {
     false
   }
-}
-
-///|
-fn Parser::consume_kw(
-  self : Parser,
-  kind : @lexer.TokenKind,
-  word : String,
-) -> Bool {
-  self.consume_kind(kind) || self.consume_word(word)
 }
 
 ///|
@@ -194,20 +168,6 @@ fn Parser::expect_kind(
 ///|
 fn Parser::expect_word(self : Parser, word : String) -> Unit {
   if !self.consume_word(word) {
-    self.error_here("P0001", "expected \{word}")
-    if !self.at_eof() {
-      ignore(self.bump())
-    }
-  }
-}
-
-///|
-fn Parser::expect_kw(
-  self : Parser,
-  kind : @lexer.TokenKind,
-  word : String,
-) -> Unit {
-  if !self.consume_kw(kind, word) {
     self.error_here("P0001", "expected \{word}")
     if !self.at_eof() {
       ignore(self.bump())
@@ -266,19 +226,19 @@ fn Parser::parse_primary(self : Parser) -> @ast.Spanned[@ast.Expr] {
   match self.current().token {
     IntConst(v) => {
       let t = self.bump()
-      make_expr(@ast.Literal(@ast.Int(v)), t.span)
+      make_expr(Literal(Int(v)), t.span)
     }
     RealConst(v) => {
       let t = self.bump()
-      make_expr(@ast.Literal(@ast.Real(v)), t.span)
+      make_expr(Literal(Real(v)), t.span)
     }
     StringConst(v) => {
       let t = self.bump()
-      make_expr(@ast.Literal(@ast.String(v)), t.span)
+      make_expr(Literal(String(v)), t.span)
     }
     Identifier(name) => {
       let t = self.bump()
-      make_expr(@ast.Name(name), t.span)
+      make_expr(Name(name), t.span)
     }
     LBracket => {
       let l = self.bump()
@@ -291,7 +251,7 @@ fn Parser::parse_primary(self : Parser) -> @ast.Spanned[@ast.Expr] {
         self.expect_kind(RBracket, "]")
       }
       let r = self.tokens[self.pos - 1].span
-      make_expr(@ast.SetLiteral(items), l.span.join(r))
+      make_expr(SetLiteral(items), l.span.join(r))
     }
     LParen => {
       let l = self.bump()
@@ -302,12 +262,12 @@ fn Parser::parse_primary(self : Parser) -> @ast.Spanned[@ast.Expr] {
         self.error_here("P0003", "expected )")
         e.span
       }
-      make_expr(@ast.Paren(e), l.span.join(r_span))
+      make_expr(Paren(e), l.span.join(r_span))
     }
     _ => {
       self.error_here("P0004", "expected expression")
       let t = self.bump()
-      make_expr(@ast.Expr::Error, t.span)
+      make_expr(Error, t.span)
     }
   }
 }
@@ -352,18 +312,19 @@ fn Parser::parse_postfix(
 
 ///|
 fn Parser::parse_unary(self : Parser) -> @ast.Spanned[@ast.Expr] {
-  let unary = match self.current().token {
-    Plus => Some(@ast.Plus)
-    Minus => Some(@ast.Minus)
-    Caret => Some(@ast.Deref)
-    At => Some(@ast.Addr)
-    _ => if self.is_word("NOT") { Some(@ast.Not) } else { None }
+  let unary : @ast.UnaryOp? = match self.current().token {
+    Plus => Some(Plus)
+    Minus => Some(Minus)
+    Caret => Some(Deref)
+    At => Some(Addr)
+    _ if self.is_word("NOT") => Some(Not)
+    _ => None
   }
   match unary {
     Some(op) => {
       let t = self.bump()
       let rhs = self.parse_unary()
-      make_expr(@ast.Unary(op, rhs), t.span.join(rhs.span))
+      make_expr(Unary(op, rhs), t.span.join(rhs.span))
     }
     None => self.parse_postfix(self.parse_primary())
   }
@@ -372,28 +333,28 @@ fn Parser::parse_unary(self : Parser) -> @ast.Spanned[@ast.Expr] {
 ///|
 fn Parser::current_binary_op(self : Parser) -> (@ast.BinaryOp, Int)? {
   match self.current().token {
-    Star => Some((@ast.Mul, 70))
-    Slash => Some((@ast.RealDiv, 70))
-    Plus => Some((@ast.Add, 60))
-    Minus => Some((@ast.Sub, 60))
-    Equal => Some((@ast.Eq, 40))
-    NotEqual => Some((@ast.Ne, 40))
-    Lt => Some((@ast.Lt, 40))
-    Lte => Some((@ast.Le, 40))
-    Gt => Some((@ast.Gt, 40))
-    Gte => Some((@ast.Ge, 40))
+    Star => Some((Mul, 70))
+    Slash => Some((RealDiv, 70))
+    Plus => Some((Add, 60))
+    Minus => Some((Sub, 60))
+    Equal => Some((Eq, 40))
+    NotEqual => Some((Ne, 40))
+    Lt => Some((Lt, 40))
+    Lte => Some((Le, 40))
+    Gt => Some((Gt, 40))
+    Gte => Some((Ge, 40))
     Identifier(name) =>
-      match ascii_upper(name) {
-        "DIV" => Some((@ast.IntDiv, 70))
-        "MOD" => Some((@ast.Mod, 70))
-        "AND" => Some((@ast.And, 70))
-        "SHL" => Some((@ast.Shl, 70))
-        "SHR" => Some((@ast.Shr, 70))
-        "OR" => Some((@ast.Or, 60))
-        "XOR" => Some((@ast.Xor, 60))
-        "IN" => Some((@ast.In, 40))
-        "IS" => Some((@ast.Is, 40))
-        "AS" => Some((@ast.As, 40))
+      match @common.ascii_upper(name) {
+        "DIV" => Some((IntDiv, 70))
+        "MOD" => Some((Mod, 70))
+        "AND" => Some((And, 70))
+        "SHL" => Some((Shl, 70))
+        "SHR" => Some((Shr, 70))
+        "OR" => Some((Or, 60))
+        "XOR" => Some((Xor, 60))
+        "IN" => Some((In, 40))
+        "IS" => Some((Is, 40))
+        "AS" => Some((As, 40))
         _ => None
       }
     _ => None
@@ -405,22 +366,22 @@ fn Parser::parse_binary(
   self : Parser,
   min_prec : Int,
 ) -> @ast.Spanned[@ast.Expr] {
-  let mut left = self.parse_unary()
-  while true {
+  for left = self.parse_unary() {
     let op = self.current_binary_op()
     match op {
       Some((binary_op, prec)) if prec >= min_prec => {
         self.bump() |> ignore
         let right = self.parse_binary(prec + 1)
-        left = make_expr(
-          @ast.Binary(binary_op, left, right),
-          left.span.join(right.span),
-        )
+        continue make_expr(
+            Binary(binary_op, left, right),
+            left.span.join(right.span),
+          )
       }
-      _ => break
+      _ => break left
     }
+  } nobreak {
+    left
   }
-  left
 }
 
 ///|
@@ -467,7 +428,7 @@ fn Parser::parse_range_expr(self : Parser) -> @ast.Spanned[@ast.Expr] {
   let left = self.parse_expr()
   if self.consume_kind(DotDot) {
     let right = self.parse_expr()
-    make_expr(@ast.Range(left, right), left.span.join(right.span))
+    make_expr(Range(left, right), left.span.join(right.span))
   } else {
     left
   }
@@ -507,14 +468,14 @@ fn Parser::parse_type_expr(self : Parser) -> @ast.Spanned[@ast.TypeExpr] {
   if self.consume_kind(Caret) {
     let s = self.tokens[self.pos - 1].span
     let inner = self.parse_type_expr()
-    return make_type_expr(@ast.Pointer(inner), s.join(inner.span))
+    return make_type_expr(Pointer(inner), s.join(inner.span))
   }
 
   if self.consume_word("SET") {
     let s = self.tokens[self.pos - 1].span
-    self.expect_kw(KwOf, "OF")
+    self.expect_kind(KwOf, "OF")
     let inner = self.parse_type_expr()
-    return make_type_expr(@ast.Set(inner), s.join(inner.span))
+    return make_type_expr(Set(inner), s.join(inner.span))
   }
 
   if self.consume_word("ARRAY") {
@@ -522,15 +483,15 @@ fn Parser::parse_type_expr(self : Parser) -> @ast.Spanned[@ast.TypeExpr] {
     self.expect_kind(LBracket, "[")
     let idx = self.parse_range_expr()
     self.expect_kind(RBracket, "]")
-    self.expect_kw(KwOf, "OF")
+    self.expect_kind(KwOf, "OF")
     let elem = self.parse_type_expr()
-    return make_type_expr(@ast.Array(idx, elem), s.join(elem.span))
+    return make_type_expr(Array(idx, elem), s.join(elem.span))
   }
 
   if self.consume_word("RECORD") {
     let s = self.tokens[self.pos - 1].span
     let fields = []
-    while !self.at_eof() && !self.is_kind_or_word(KwEnd, "END") {
+    while !self.at_eof() && !self.is_kind(KwEnd) {
       let names = [self.take_identifier()]
       while self.consume_kind(Comma) {
         names.push(self.take_identifier())
@@ -540,9 +501,9 @@ fn Parser::parse_type_expr(self : Parser) -> @ast.Spanned[@ast.TypeExpr] {
       fields.push(@ast.Spanned::new(@ast.FieldDecl::{ names, ty }, ty.span))
       ignore(self.consume_kind(Semicolon))
     }
-    self.expect_kw(@lexer.KwEnd, "END")
+    self.expect_kind(KwEnd, "END")
     let end_span = self.tokens[self.pos - 1].span
-    return make_type_expr(@ast.Record(fields), s.join(end_span))
+    return make_type_expr(Record(fields), s.join(end_span))
   }
 
   if self.consume_kind(LParen) {
@@ -553,23 +514,20 @@ fn Parser::parse_type_expr(self : Parser) -> @ast.Spanned[@ast.TypeExpr] {
     }
     self.expect_kind(RParen, ")")
     let end_span = self.tokens[self.pos - 1].span
-    return make_type_expr(@ast.Enum(names), s.join(end_span))
+    return make_type_expr(Enum(names), s.join(end_span))
   }
 
   let left = self.parse_expr()
   if self.consume_kind(DotDot) {
     let right = self.parse_expr()
-    return make_type_expr(
-      @ast.Subrange(left, right),
-      left.span.join(right.span),
-    )
+    return make_type_expr(Subrange(left, right), left.span.join(right.span))
   }
 
   match left.node {
-    @ast.Name(name) => make_type_expr(@ast.Named(name), left.span)
+    Name(name) => make_type_expr(Named(name), left.span)
     _ => {
       self.error_here("P0030", "expected type expression")
-      make_type_expr(@ast.Error, left.span)
+      make_type_expr(Error, left.span)
     }
   }
 }
@@ -586,9 +544,9 @@ fn Parser::parse_param_list(
     return out
   }
   while !self.at_eof() {
-    let mode : @ast.ParamMode = if self.consume_kw(KwVar, "VAR") {
+    let mode : @ast.ParamMode = if self.consume_kind(KwVar) {
       Var
-    } else if self.consume_kw(KwConst, "CONST") {
+    } else if self.consume_kind(KwConst) {
       Const
     } else if self.consume_word("OUT") {
       Out
@@ -620,7 +578,7 @@ fn Parser::parse_proc_directives(
   while true {
     let s = self.current_span()
     if self.consume_word("FORWARD") {
-      out.push(make_directive(@ast.Forward, s))
+      out.push(make_directive(Forward, s))
     } else if self.consume_word("EXTERNAL") {
       let ext_name = match self.current().token {
         StringConst(v) => {
@@ -633,44 +591,36 @@ fn Parser::parse_proc_directives(
         }
         _ => None
       }
-      out.push(make_directive(@ast.External(ext_name), s))
+      out.push(make_directive(External(ext_name), s))
     } else if self.consume_word("INLINE") {
-      out.push(make_directive(@ast.Inline, s))
+      out.push(make_directive(Inline, s))
     } else if self.consume_word("ASSEMBLER") {
-      out.push(make_directive(@ast.Assembler, s))
+      out.push(make_directive(Assembler, s))
     } else if self.consume_word("OVERLOAD") {
-      out.push(make_directive(@ast.Overload, s))
+      out.push(make_directive(Overload, s))
     } else if self.consume_word("VIRTUAL") {
-      out.push(make_directive(@ast.Virtual, s))
+      out.push(make_directive(Virtual, s))
     } else if self.consume_word("ABSTRACT") {
-      out.push(make_directive(@ast.Abstract, s))
+      out.push(make_directive(Abstract, s))
     } else if self.consume_word("OVERRIDE") {
-      out.push(make_directive(@ast.Override, s))
+      out.push(make_directive(Override, s))
     } else if self.consume_word("CDECL") {
-      out.push(make_directive(@ast.CallingConv(@ast.Cdecl), s))
+      out.push(make_directive(CallingConv(Cdecl), s))
     } else if self.consume_word("STDCALL") {
-      out.push(make_directive(@ast.CallingConv(@ast.Stdcall), s))
+      out.push(make_directive(CallingConv(Stdcall), s))
     } else if self.consume_word("PASCAL") {
-      out.push(make_directive(@ast.CallingConv(@ast.Pascal), s))
+      out.push(make_directive(CallingConv(Pascal), s))
     } else if self.consume_word("REGISTER") {
-      out.push(make_directive(@ast.CallingConv(@ast.Register), s))
+      out.push(make_directive(CallingConv(Register), s))
     } else if self.consume_word("MESSAGE") {
       let msg = match self.current().token {
-        StringConst(v) => {
-          ignore(self.bump())
-          v
-        }
-        Identifier(v) => {
-          ignore(self.bump())
-          v
-        }
-        IntConst(v) => {
+        StringConst(v) | Identifier(v) | IntConst(v) => {
           ignore(self.bump())
           v
         }
         _ => ""
       }
-      out.push(make_directive(@ast.Message(msg), s))
+      out.push(make_directive(Message(msg), s))
     } else {
       break
     }
@@ -687,11 +637,7 @@ fn Parser::parse_declarations(self : Parser) -> Array[@ast.Spanned[@ast.Decl]] {
       let start = self.tokens[self.pos - 1].span
       let labels = []
       match self.current().token {
-        Identifier(v) => {
-          labels.push(v)
-          ignore(self.bump())
-        }
-        IntConst(v) => {
+        Identifier(v) | IntConst(v) => {
           labels.push(v)
           ignore(self.bump())
         }
@@ -699,11 +645,7 @@ fn Parser::parse_declarations(self : Parser) -> Array[@ast.Spanned[@ast.Decl]] {
       }
       while self.consume_kind(Comma) {
         match self.current().token {
-          Identifier(v) => {
-            labels.push(v)
-            ignore(self.bump())
-          }
-          IntConst(v) => {
+          Identifier(v) | IntConst(v) => {
             labels.push(v)
             ignore(self.bump())
           }
@@ -715,36 +657,34 @@ fn Parser::parse_declarations(self : Parser) -> Array[@ast.Spanned[@ast.Decl]] {
       continue
     }
 
-    if self.is_kind_or_word(KwConst, "CONST") {
-      ignore(self.consume_kw(KwConst, "CONST"))
+    if self.is_kind(KwConst) {
+      ignore(self.consume_kind(KwConst))
       while !self.at_eof() && self.current().kind() is Identifier {
         let start = self.current_span()
         let name = self.take_identifier()
         self.expect_kind(Equal, "=")
         let value = self.parse_expr()
-        decls.push(
-          make_decl(@ast.ConstDecl(name, value), start.join(value.span)),
-        )
+        decls.push(make_decl(ConstDecl(name, value), start.join(value.span)))
         self.expect_kind(Semicolon, ";")
       }
       continue
     }
 
-    if self.is_kind_or_word(KwType, "TYPE") {
-      ignore(self.consume_kw(KwType, "TYPE"))
+    if self.is_kind(KwType) {
+      ignore(self.consume_kind(KwType))
       while !self.at_eof() && self.current().kind() is Identifier {
         let start = self.current_span()
         let name = self.take_identifier()
         self.expect_kind(Equal, "=")
         let ty = self.parse_type_expr()
-        decls.push(make_decl(@ast.TypeDecl(name, ty), start.join(ty.span)))
+        decls.push(make_decl(TypeDecl(name, ty), start.join(ty.span)))
         self.expect_kind(Semicolon, ";")
       }
       continue
     }
 
-    if self.is_kind_or_word(KwVar, "VAR") {
-      ignore(self.consume_kw(KwVar, "VAR"))
+    if self.is_kind(KwVar) {
+      ignore(self.consume_kind(KwVar))
       while !self.at_eof() && self.current().kind() is Identifier {
         let start = self.current_span()
         let names = [self.take_identifier()]
@@ -770,9 +710,9 @@ fn Parser::parse_declarations(self : Parser) -> Array[@ast.Spanned[@ast.Decl]] {
       continue
     }
 
-    if self.is_kind_or_word(KwProcedure, "PROCEDURE") {
+    if self.is_kind(KwProcedure) {
       let start = self.current_span()
-      ignore(self.consume_kw(KwProcedure, "PROCEDURE"))
+      ignore(self.consume_kind(KwProcedure))
       let name = self.take_identifier()
       let params = self.parse_param_list()
       self.expect_kind(Semicolon, ";")
@@ -800,9 +740,9 @@ fn Parser::parse_declarations(self : Parser) -> Array[@ast.Spanned[@ast.Decl]] {
       continue
     }
 
-    if self.is_kind_or_word(KwFunction, "FUNCTION") {
+    if self.is_kind(KwFunction) {
       let start = self.current_span()
-      ignore(self.consume_kw(KwFunction, "FUNCTION"))
+      ignore(self.consume_kind(KwFunction))
       let name = self.take_identifier()
       let params = self.parse_param_list()
       self.expect_kind(Colon, ":")
@@ -850,7 +790,7 @@ fn Parser::is_stmt_end(self : Parser) -> Bool {
 
 ///|
 fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
-  if self.consume_kw(KwBegin, "BEGIN") {
+  if self.consume_kind(KwBegin) {
     let begin_span = self.tokens[self.pos - 1].span
     let stmts = []
     while !self.at_eof() && self.current().kind() != KwEnd {
@@ -861,15 +801,15 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
     }
     self.expect_kind(KwEnd, "end")
     let end_span = self.tokens[self.pos - 1].span
-    return make_stmt(@ast.Compound(stmts), begin_span.join(end_span))
+    return make_stmt(Compound(stmts), begin_span.join(end_span))
   }
 
-  if self.consume_kw(KwIf, "IF") {
+  if self.consume_kind(KwIf) {
     let if_span = self.tokens[self.pos - 1].span
     let cond = self.parse_expr()
-    self.expect_kw(KwThen, "THEN")
+    self.expect_kind(KwThen, "THEN")
     let then_stmt = self.parse_statement()
-    let else_stmt = if self.consume_kw(KwElse, "ELSE") {
+    let else_stmt = if self.consume_kind(KwElse) {
       Some(self.parse_statement())
     } else {
       None
@@ -878,21 +818,18 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
       Some(s) => s.span
       None => then_stmt.span
     }
-    return make_stmt(
-      @ast.If(cond, then_stmt, else_stmt),
-      if_span.join(end_span),
-    )
+    return make_stmt(If(cond, then_stmt, else_stmt), if_span.join(end_span))
   }
 
-  if self.consume_kw(KwWhile, "WHILE") {
+  if self.consume_kind(KwWhile) {
     let w_span = self.tokens[self.pos - 1].span
     let cond = self.parse_expr()
-    self.expect_kw(KwDo, "DO")
+    self.expect_kind(KwDo, "DO")
     let body = self.parse_statement()
-    return make_stmt(@ast.While(cond, body), w_span.join(body.span))
+    return make_stmt(While(cond, body), w_span.join(body.span))
   }
 
-  if self.consume_kw(KwRepeat, "REPEAT") {
+  if self.consume_kind(KwRepeat) {
     let r_span = self.tokens[self.pos - 1].span
     let stmts = []
     while !self.at_eof() &&
@@ -901,35 +838,36 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
       stmts.push(self.parse_statement())
       self.consume_kind(Semicolon) |> ignore
     }
-    self.expect_kw(KwUntil, "UNTIL")
+    self.expect_kind(KwUntil, "UNTIL")
     let cond = self.parse_expr()
-    return make_stmt(@ast.RepeatUntil(stmts, cond), r_span.join(cond.span))
+    return make_stmt(RepeatUntil(stmts, cond), r_span.join(cond.span))
   }
 
-  if self.consume_kw(KwFor, "FOR") {
+  if self.consume_kind(KwFor) {
     let f_span = self.tokens[self.pos - 1].span
     let loop_var = self.parse_expr()
     self.expect_kind(Assign, ":=")
     let from_ = self.parse_expr()
-    let dir = if self.consume_kind(KwDownto) || self.consume_word("DOWNTO") {
-      @ast.Downto
+    let dir : @ast.ForDirection = if self.consume_kind(KwDownto) ||
+      self.consume_word("DOWNTO") {
+      Downto
     } else {
-      self.expect_kw(KwTo, "TO")
-      @ast.To
+      self.expect_kind(KwTo, "TO")
+      To
     }
     let to_ = self.parse_expr()
-    self.expect_kw(KwDo, "DO")
+    self.expect_kind(KwDo, "DO")
     let body = self.parse_statement()
     return make_stmt(
-      @ast.For(loop_var, from_, dir, to_, body),
+      For(loop_var, from_, dir, to_, body),
       f_span.join(body.span),
     )
   }
 
-  if self.consume_kw(KwCase, "CASE") {
+  if self.consume_kind(KwCase) {
     let start = self.tokens[self.pos - 1].span
     let cond = self.parse_expr()
-    self.expect_kw(KwOf, "OF")
+    self.expect_kind(KwOf, "OF")
     let branches = []
     while !self.at_eof() &&
           self.current().kind() != KwElse &&
@@ -947,16 +885,16 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
       )
       ignore(self.consume_kind(Semicolon))
     }
-    let else_stmt = if self.consume_kw(KwElse, "ELSE") {
+    let else_stmt = if self.consume_kind(KwElse) {
       let s = self.parse_statement()
       ignore(self.consume_kind(Semicolon))
       Some(s)
     } else {
       None
     }
-    self.expect_kw(KwEnd, "END")
+    self.expect_kind(KwEnd, "END")
     let end_span = self.tokens[self.pos - 1].span
-    return make_stmt(@ast.Case(cond, branches, else_stmt), start.join(end_span))
+    return make_stmt(Case(cond, branches, else_stmt), start.join(end_span))
   }
 
   if self.consume_word("TRY") {
@@ -971,10 +909,7 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
     } else {
       start
     }
-    let try_block = make_stmt(
-      @ast.Compound(try_stmts),
-      start.join(try_inner_end),
-    )
+    let try_block = make_stmt(Compound(try_stmts), start.join(try_inner_end))
     if self.consume_word("EXCEPT") {
       let handlers = []
       let mut default_handler : @ast.Spanned[@ast.Stmt]? = None
@@ -988,7 +923,7 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
           let name = self.take_identifier()
           self.expect_kind(Colon, ":")
           let ty = self.parse_type_expr()
-          self.expect_kw(KwDo, "DO")
+          self.expect_kind(KwDo, "DO")
           let body = self.parse_statement()
           handlers.push(
             @ast.Spanned::new(
@@ -1001,25 +936,25 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
         }
         ignore(self.consume_kind(Semicolon))
       }
-      if self.consume_kw(KwElse, "ELSE") {
+      if self.consume_kind(KwElse) {
         default_handler = Some(self.parse_statement())
         ignore(self.consume_kind(Semicolon))
       }
-      self.expect_kw(KwEnd, "END")
+      self.expect_kind(KwEnd, "END")
       let end_span = self.tokens[self.pos - 1].span
       return make_stmt(
-        @ast.TryExcept(try_block, handlers, default_handler),
+        TryExcept(try_block, handlers, default_handler),
         start.join(end_span),
       )
     }
     if self.consume_word("FINALLY") {
       let finally_start = self.tokens[self.pos - 1].span
       let finally_stmts = []
-      while !self.at_eof() && !self.is_kind_or_word(KwEnd, "END") {
+      while !self.at_eof() && !self.is_kind(KwEnd) {
         finally_stmts.push(self.parse_statement())
         ignore(self.consume_kind(Semicolon))
       }
-      self.expect_kw(KwEnd, "END")
+      self.expect_kind(KwEnd, "END")
       let end_span = self.tokens[self.pos - 1].span
       let finally_inner_end = if finally_stmts.length() > 0 {
         finally_stmts[finally_stmts.length() - 1].span
@@ -1027,16 +962,16 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
         finally_start
       }
       let finally_block = make_stmt(
-        @ast.Compound(finally_stmts),
+        Compound(finally_stmts),
         finally_start.join(finally_inner_end),
       )
       return make_stmt(
-        @ast.TryFinally(try_block, finally_block),
+        TryFinally(try_block, finally_block),
         start.join(end_span),
       )
     }
     self.error_here("P0040", "expected EXCEPT or FINALLY")
-    return make_stmt(@ast.Error, start)
+    return make_stmt(Error, start)
   }
 
   if self.consume_word("RAISE") {
@@ -1050,17 +985,17 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
       Some(v) => v.span
       None => s
     }
-    return make_stmt(@ast.Raise(value), s.join(end_span))
+    return make_stmt(Raise(value), s.join(end_span))
   }
 
   if self.consume_word("BREAK") {
     let s = self.tokens[self.pos - 1].span
-    return make_stmt(@ast.Break, s)
+    return make_stmt(Break, s)
   }
 
   if self.consume_word("CONTINUE") {
     let s = self.tokens[self.pos - 1].span
-    return make_stmt(@ast.Continue, s)
+    return make_stmt(Continue, s)
   }
 
   if self.consume_word("EXIT") {
@@ -1076,14 +1011,14 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
       Some(v) => v.span
       None => s
     }
-    return make_stmt(@ast.Exit(value), s.join(end_span))
+    return make_stmt(Exit(value), s.join(end_span))
   }
 
   if self.consume_word("GOTO") {
     let s = self.tokens[self.pos - 1].span
     let label_span = self.current_span()
     let label = self.take_identifier()
-    return make_stmt(@ast.Goto(label), s.join(label_span))
+    return make_stmt(Goto(label), s.join(label_span))
   }
 
   if self.consume_word("WITH") {
@@ -1092,17 +1027,17 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
     while self.consume_kind(Comma) {
       values.push(self.parse_expr())
     }
-    self.expect_kw(KwDo, "DO")
+    self.expect_kind(KwDo, "DO")
     let body = self.parse_statement()
-    return make_stmt(@ast.With(values, body), s.join(body.span))
+    return make_stmt(With(values, body), s.join(body.span))
   }
 
   if self.consume_word("ASM") {
     let s = self.tokens[self.pos - 1].span
     let out = StringBuilder::new()
     let mut first = true
-    while !self.at_eof() && !self.is_kind_or_word(KwEnd, "END") {
-      let text = token_text(self.current().token)
+    while !self.at_eof() && !self.is_kind(KwEnd) {
+      let text = self.current().token.text()
       if text != "" {
         if !first {
           out.write_string(" ")
@@ -1112,9 +1047,9 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
       }
       ignore(self.bump())
     }
-    self.expect_kw(KwEnd, "END")
+    self.expect_kind(KwEnd, "END")
     let end_span = self.tokens[self.pos - 1].span
-    return make_stmt(@ast.Asm(out.to_string()), s.join(end_span))
+    return make_stmt(Asm(out.to_string()), s.join(end_span))
   }
 
   match self.current().token {
@@ -1123,35 +1058,35 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
       ignore(self.bump())
       self.expect_kind(Colon, ":")
       let body = self.parse_statement()
-      return make_stmt(@ast.Label(label, body), s.join(body.span))
+      return make_stmt(Label(label, body), s.join(body.span))
     }
     IntConst(label) if self.peek_kind(1) is Colon => {
       let s = self.current_span()
       ignore(self.bump())
       self.expect_kind(Colon, ":")
       let body = self.parse_statement()
-      return make_stmt(@ast.Label(label, body), s.join(body.span))
+      return make_stmt(Label(label, body), s.join(body.span))
     }
     _ => ()
   }
 
   if self.current().kind() is Semicolon || self.is_stmt_end() {
     let s = self.current_span()
-    return make_stmt(@ast.Empty, s)
+    return make_stmt(Empty, s)
   }
 
   let left = self.parse_expr()
   if self.consume_kind(Assign) {
     let right = self.parse_expr()
-    return make_stmt(@ast.Assign(left, right), left.span.join(right.span))
+    return make_stmt(Assign(left, right), left.span.join(right.span))
   }
   match left.node {
-    @ast.Call(callee, args) => make_stmt(@ast.Call(callee, args), left.span)
-    @ast.Name(_) => make_stmt(@ast.Call(left, []), left.span)
-    @ast.Field(_, _) => make_stmt(@ast.Call(left, []), left.span)
+    Call(callee, args) => make_stmt(Call(callee, args), left.span)
+    Name(_) => make_stmt(Call(left, []), left.span)
+    Field(_, _) => make_stmt(Call(left, []), left.span)
     _ => {
       self.error_here("P0005", "expected assignment or procedure call")
-      make_stmt(@ast.Error, left.span)
+      make_stmt(Error, left.span)
     }
   }
 }
@@ -1159,7 +1094,7 @@ fn Parser::parse_statement(self : Parser) -> @ast.Spanned[@ast.Stmt] {
 ///|
 fn Parser::parse_block(self : Parser) -> @ast.Spanned[@ast.Block] {
   let decls = self.parse_declarations()
-  let begin_span = if self.consume_kw(KwBegin, "BEGIN") {
+  let begin_span = if self.consume_kind(KwBegin) {
     self.tokens[self.pos - 1].span
   } else {
     self..error_here("P0011", "expected begin").current_span()
@@ -1170,7 +1105,7 @@ fn Parser::parse_block(self : Parser) -> @ast.Spanned[@ast.Block] {
     stmts.push(self.parse_statement())
     self.consume_kind(Semicolon) |> ignore
   }
-  self.expect_kw(KwEnd, "END")
+  self.expect_kind(KwEnd, "END")
   let end_span = self.tokens[self.pos - 1].span
   make_block(decls, stmts, begin_span.join(end_span))
 }
@@ -1236,11 +1171,11 @@ fn Parser::parse_program_unit(
   if finalization.length() > 0 ||
     self.is_word("END") ||
     self.current().kind() is KwEnd {
-    self.expect_kw(KwEnd, "END")
+    self.expect_kind(KwEnd, "END")
   }
   self.expect_kind(Dot, ".")
   @ast.Spanned::new(
-    @ast.CompilationUnit::ProgramUnit({ name, uses, block, finalization }),
+    ProgramUnit({ name, uses, block, finalization }),
     start.join(block.span),
   )
 }
@@ -1264,7 +1199,7 @@ fn Parser::parse_unit_module(
   let implementation_uses = self.parse_uses_clause()
 
   let impl_decls = self.parse_declarations()
-  let implementation_block = if self.is_kind_or_word(KwBegin, "BEGIN") {
+  let implementation_block = if self.is_kind(KwBegin) {
     let b = self.parse_block()
     let all_decls = impl_decls
     for d in b.node.decls {
@@ -1290,12 +1225,12 @@ fn Parser::parse_unit_module(
   }
 
   if self.is_word("END") || self.current().kind() is KwEnd {
-    self.expect_kw(KwEnd, "END")
+    self.expect_kind(KwEnd, "END")
   }
   self.expect_kind(Dot, ".")
 
   @ast.Spanned::new(
-    @ast.CompilationUnit::UnitModule({
+    UnitModule({
       name,
       interface_uses,
       interface_decls,
@@ -1326,11 +1261,11 @@ fn Parser::parse_library_unit(
   if finalization.length() > 0 ||
     self.is_word("END") ||
     self.current().kind() is KwEnd {
-    self.expect_kw(KwEnd, "END")
+    self.expect_kind(KwEnd, "END")
   }
   self.expect_kind(Dot, ".")
   @ast.Spanned::new(
-    @ast.CompilationUnit::LibraryUnit({ name, uses, block, finalization }),
+    LibraryUnit({ name, uses, block, finalization }),
     start.join(block.span),
   )
 }
@@ -1346,9 +1281,9 @@ pub fn parse_tokens(
     [..] => tokens
   }
   let p = { tokens: stable_tokens, sink, pos: 0 }
-  let cu = if p.is_kind_or_word(KwProgram, "PROGRAM") {
+  let cu = if p.is_kind(KwProgram) {
     p.parse_program_unit()
-  } else if p.is_kind_or_word(KwUnit, "UNIT") {
+  } else if p.is_kind(KwUnit) {
     p.parse_unit_module()
   } else if p.is_word("LIBRARY") {
     p.parse_library_unit()
