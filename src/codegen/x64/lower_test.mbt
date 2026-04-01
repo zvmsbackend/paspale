@@ -7,7 +7,7 @@ test "lower compilation unit emits call and mov" {
 
   assert_true(text.contains("[procedures]"))
   assert_true(text.contains("main"))
-  assert_true(text.contains("mov eax, 1"))
+  assert_true(text.contains("mov [x], 1"))
   assert_true(text.contains("; call Foo"))
 }
 

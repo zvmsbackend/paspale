@@ -46,8 +46,8 @@ test "backend emit_and_link writes artifacts and stages" {
       guard @driver.toolchain_plan(output) is Some(plan) else {
         fail("missing toolchain plan")
       }
-      assert_true(plan.assemble_cmd.contains("cc -c"))
-      assert_true(plan.link_cmd.contains("cc \""))
+      assert_true(plan.assemble_cmd.contains("-fno-pie"))
+      assert_true(plan.link_cmd.contains("-no-pie"))
     }
     Err(msg, _) => fail(msg)
   }

@@ -117,11 +117,19 @@ fn emit_assign(
   span : @diag.Span,
 ) -> Unit {
   match (lhs.node, rhs.node) {
-    (Name(dst), Name(src)) if dst == src =>
+    (Name(dst), Name(src)) if dst == src => {
       out.emit(Tai::new(Instruction, "mov", ["eax", "eax"]).with_span(span))
-    (Name(_), _) =>
-      if lower_int_expr(out, rhs, span) {
-        ()
+      out.emit(
+        Tai::new(Instruction, "mov", ["[\{dst}]", "eax"]).with_span(span),
+      )
+    }
+    (Name(dst), _) =>
+      if int_lit(rhs) is Some(v) {
+        out.emit(Tai::new(Instruction, "mov", ["[\{dst}]", v]).with_span(span))
+      } else if lower_int_expr(out, rhs, span) {
+        out.emit(
+          Tai::new(Instruction, "mov", ["[\{dst}]", "eax"]).with_span(span),
+        )
       } else {
         out.emit(
           Tai::new(Comment, "; assign \{expr_text(lhs)} := \{expr_text(rhs)}", []).with_span(
@@ -243,7 +251,23 @@ fn emit_stmt(out : AsmData, s : @ast.Spanned[@ast.Stmt]) -> Unit {
 }
 
 ///|
+fn emit_global_decl(out : AsmData, d : @ast.Spanned[@ast.Decl]) -> Unit {
+  match d.node {
+    VarDecl(names, _, _) =>
+      for n in names {
+        out.switch(Globals)
+        out.emit(Tai::new(Symbol, n, []).with_span(d.span))
+        out.switch(Procedures)
+      }
+    _ => ()
+  }
+}
+
+///|
 fn emit_block(out : AsmData, block : @ast.Spanned[@ast.Block]) -> Unit {
+  for d in block.node.decls {
+    emit_global_decl(out, d)
+  }
   for s in block.node.stmts {
     emit_stmt(out, s)
   }

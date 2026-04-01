@@ -78,9 +78,21 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
     op == "jg" ||
     op == "jge"
   }
+  fn is_mem(op : String) {
+    op.has_prefix("[") && op.has_suffix("]")
+  }
 
   let out = StringBuilder::new()
   out.write_string(".intel_syntax noprefix\n")
+  if aasm.globals.length() > 0 {
+    out.write_string(".data\n")
+    for g in aasm.globals {
+      if g.kind == Symbol {
+        out.write_string(g.opcode)
+        out.write_string(": .long 0\n")
+      }
+    }
+  }
   out.write_string(".text\n")
   out.write_string(".globl main\n")
   out.write_string("main:\n")
@@ -88,9 +100,15 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
   for item in aasm.procedures {
     match item {
       { kind: Instruction, opcode: "mov", operands: [dst, src], .. } =>
-        if is_reg(dst) && (is_reg(src) || is_int(src)) {
+        if (is_reg(dst) || is_mem(dst)) &&
+          (is_reg(src) || is_mem(src) || is_int(src)) {
+          let asm_dst = if is_mem(dst) && is_int(src) {
+            "DWORD PTR \{dst}"
+          } else {
+            dst
+          }
           out.write_string("  mov ")
-          out.write_string(dst)
+          out.write_string(asm_dst)
           out.write_string(", ")
           out.write_string(src)
           out.write_string("\n")
@@ -169,8 +187,8 @@ pub fn toolchain_plan(output : CompileOutput) -> ToolchainPlan? {
         asm_path,
         object_path,
         executable_path,
-        assemble_cmd: "cc -c \"\{asm_path}\" -o \"\{object_path}\"",
-        link_cmd: "cc \"\{object_path}\" -o \"\{executable_path}\"",
+        assemble_cmd: "cc -c -fno-pie \"\{asm_path}\" -o \"\{object_path}\"",
+        link_cmd: "cc -no-pie \"\{object_path}\" -o \"\{executable_path}\"",
       })
     _ => None
   }
