@@ -28,7 +28,7 @@ fn int_lit(e : @ast.Spanned[@ast.Expr]) -> String? {
 }
 
 ///|
-fn lower_int_expr(
+fn lower_expr_to_eax(
   out : AsmData,
   e : @ast.Spanned[@ast.Expr],
   span : @diag.Span,
@@ -38,27 +38,45 @@ fn lower_int_expr(
       out.emit(Tai::new(Instruction, "mov", ["eax", v]).with_span(span))
       true
     }
+    Name(name) => {
+      out.emit(
+        Tai::new(Instruction, "mov", ["eax", "[\{name}]"]).with_span(span),
+      )
+      true
+    }
+    Paren(inner) => lower_expr_to_eax(out, inner, span)
     Unary(Minus, rhs) =>
-      if int_lit(rhs) is Some(v) {
-        out.emit(Tai::new(Instruction, "mov", ["eax", "0"]).with_span(span))
-        out.emit(Tai::new(Instruction, "sub", ["eax", v]).with_span(span))
+      if lower_expr_to_eax(out, rhs, span) {
+        out.emit(Tai::new(Instruction, "mov", ["ebx", "0"]).with_span(span))
+        out.emit(Tai::new(Instruction, "sub", ["ebx", "eax"]).with_span(span))
+        out.emit(Tai::new(Instruction, "mov", ["eax", "ebx"]).with_span(span))
         true
       } else {
         false
       }
     Binary(Add, lhs, rhs) =>
-      if int_lit(lhs) is Some(a) && int_lit(rhs) is Some(b) {
-        out.emit(Tai::new(Instruction, "mov", ["eax", a]).with_span(span))
-        out.emit(Tai::new(Instruction, "add", ["eax", b]).with_span(span))
-        true
+      if lower_expr_to_eax(out, lhs, span) {
+        out.emit(Tai::new(Instruction, "mov", ["ebx", "eax"]).with_span(span))
+        if lower_expr_to_eax(out, rhs, span) {
+          out.emit(Tai::new(Instruction, "add", ["ebx", "eax"]).with_span(span))
+          out.emit(Tai::new(Instruction, "mov", ["eax", "ebx"]).with_span(span))
+          true
+        } else {
+          false
+        }
       } else {
         false
       }
     Binary(Sub, lhs, rhs) =>
-      if int_lit(lhs) is Some(a) && int_lit(rhs) is Some(b) {
-        out.emit(Tai::new(Instruction, "mov", ["eax", a]).with_span(span))
-        out.emit(Tai::new(Instruction, "sub", ["eax", b]).with_span(span))
-        true
+      if lower_expr_to_eax(out, lhs, span) {
+        out.emit(Tai::new(Instruction, "mov", ["ebx", "eax"]).with_span(span))
+        if lower_expr_to_eax(out, rhs, span) {
+          out.emit(Tai::new(Instruction, "sub", ["ebx", "eax"]).with_span(span))
+          out.emit(Tai::new(Instruction, "mov", ["eax", "ebx"]).with_span(span))
+          true
+        } else {
+          false
+        }
       } else {
         false
       }
@@ -94,18 +112,37 @@ fn lower_cond_jump(
 ) -> Bool {
   match cond.node {
     Binary(op, lhs, rhs) =>
-      if cond_jcc(op) is Some(jcc) &&
-        int_lit(lhs) is Some(a) &&
-        int_lit(rhs) is Some(b) {
-        out.emit(Tai::new(Instruction, "mov", ["eax", a]).with_span(span))
-        out.emit(Tai::new(Instruction, "cmp", ["eax", b]).with_span(span))
-        out.emit(Tai::new(Instruction, jcc, [true_label]).with_span(span))
-        out.emit(Tai::new(Instruction, "jmp", [false_label]).with_span(span))
-        true
+      if cond_jcc(op) is Some(jcc) {
+        if lower_expr_to_eax(out, rhs, span) {
+          out.emit(Tai::new(Instruction, "mov", ["ebx", "eax"]).with_span(span))
+          if lower_expr_to_eax(out, lhs, span) {
+            out.emit(
+              Tai::new(Instruction, "cmp", ["eax", "ebx"]).with_span(span),
+            )
+            out.emit(Tai::new(Instruction, jcc, [true_label]).with_span(span))
+            out.emit(
+              Tai::new(Instruction, "jmp", [false_label]).with_span(span),
+            )
+            true
+          } else {
+            false
+          }
+        } else {
+          false
+        }
       } else {
         false
       }
     _ => false
+  }
+}
+
+///|
+fn current_loop_label(stack : Array[String]) -> String? {
+  if stack.length() == 0 {
+    None
+  } else {
+    Some(stack[stack.length() - 1])
   }
 }
 
@@ -126,7 +163,7 @@ fn emit_assign(
     (Name(dst), _) =>
       if int_lit(rhs) is Some(v) {
         out.emit(Tai::new(Instruction, "mov", ["[\{dst}]", v]).with_span(span))
-      } else if lower_int_expr(out, rhs, span) {
+      } else if lower_expr_to_eax(out, rhs, span) {
         out.emit(
           Tai::new(Instruction, "mov", ["[\{dst}]", "eax"]).with_span(span),
         )
@@ -147,35 +184,47 @@ fn emit_assign(
 }
 
 ///|
-fn emit_stmt(out : AsmData, s : @ast.Spanned[@ast.Stmt]) -> Unit {
+fn emit_stmt(
+  out : AsmData,
+  s : @ast.Spanned[@ast.Stmt],
+  break_labels : Array[String],
+  continue_labels : Array[String],
+) -> Unit {
   match s.node {
     Compound(stmts) =>
       for st in stmts {
-        emit_stmt(out, st)
+        emit_stmt(out, st, break_labels, continue_labels)
       }
     Assign(lhs, rhs) => emit_assign(out, lhs, rhs, s.span)
     Call(callee, _) =>
-      out.emit(
-        Tai::new(Comment, "; call \{expr_text(callee)}", []).with_span(s.span),
-      )
+      match callee.node {
+        Name(name) =>
+          out.emit(Tai::new(Instruction, "call", [name]).with_span(s.span))
+        _ =>
+          out.emit(
+            Tai::new(Comment, "; call \{expr_text(callee)}", []).with_span(
+              s.span,
+            ),
+          )
+      }
     If(cond, then_s, else_s) => {
       let then_label = fresh_label(out, ".L_if_then")
       let else_label = fresh_label(out, ".L_if_else")
       let end_label = fresh_label(out, ".L_if_end")
       if lower_cond_jump(out, cond, then_label, else_label, s.span) {
         out.emit(Tai::new(Label, then_label, []).with_span(s.span))
-        emit_stmt(out, then_s)
+        emit_stmt(out, then_s, break_labels, continue_labels)
         out.emit(Tai::new(Instruction, "jmp", [end_label]).with_span(s.span))
         out.emit(Tai::new(Label, else_label, []).with_span(s.span))
         if else_s is Some(es) {
-          emit_stmt(out, es)
+          emit_stmt(out, es, break_labels, continue_labels)
         }
         out.emit(Tai::new(Label, end_label, []).with_span(s.span))
       } else {
         out.emit(Tai::new(Comment, "; if", []).with_span(s.span))
-        emit_stmt(out, then_s)
+        emit_stmt(out, then_s, break_labels, continue_labels)
         if else_s is Some(es) {
-          emit_stmt(out, es)
+          emit_stmt(out, es, break_labels, continue_labels)
         }
       }
     }
@@ -184,61 +233,151 @@ fn emit_stmt(out : AsmData, s : @ast.Spanned[@ast.Stmt]) -> Unit {
       let body_label = fresh_label(out, ".L_while_body")
       let end_label = fresh_label(out, ".L_while_end")
       out.emit(Tai::new(Label, loop_label, []).with_span(s.span))
+      break_labels.push(end_label)
+      continue_labels.push(loop_label)
       if lower_cond_jump(out, cond, body_label, end_label, s.span) {
         out.emit(Tai::new(Label, body_label, []).with_span(s.span))
-        emit_stmt(out, body)
+        emit_stmt(out, body, break_labels, continue_labels)
         out.emit(Tai::new(Instruction, "jmp", [loop_label]).with_span(s.span))
         out.emit(Tai::new(Label, end_label, []).with_span(s.span))
       } else {
         out.emit(Tai::new(Comment, "; while", []).with_span(s.span))
-        emit_stmt(out, body)
+        emit_stmt(out, body, break_labels, continue_labels)
       }
+      continue_labels.pop() |> ignore
+      break_labels.pop() |> ignore
     }
-    RepeatUntil(stmts, _) =>
+    RepeatUntil(stmts, cond) => {
+      let loop_label = fresh_label(out, ".L_repeat_loop")
+      let end_label = fresh_label(out, ".L_repeat_end")
+      out.emit(Tai::new(Label, loop_label, []).with_span(s.span))
+      break_labels.push(end_label)
+      continue_labels.push(loop_label)
       for st in stmts {
-        emit_stmt(out, st)
+        emit_stmt(out, st, break_labels, continue_labels)
       }
-    For(_, _, _, _, body) => {
-      out.emit(Tai::new(Comment, "; for", []).with_span(s.span))
-      emit_stmt(out, body)
+      if lower_cond_jump(out, cond, end_label, loop_label, s.span) {
+        out.emit(Tai::new(Label, end_label, []).with_span(s.span))
+      } else {
+        out.emit(Tai::new(Comment, "; repeat until", []).with_span(s.span))
+      }
+      continue_labels.pop() |> ignore
+      break_labels.pop() |> ignore
+    }
+    For(counter, start, dir, bound, body) => {
+      let check_label = fresh_label(out, ".L_for_check")
+      let body_label = fresh_label(out, ".L_for_body")
+      let continue_label = fresh_label(out, ".L_for_continue")
+      let end_label = fresh_label(out, ".L_for_end")
+      emit_assign(out, counter, start, s.span)
+      out.emit(Tai::new(Label, check_label, []).with_span(s.span))
+      break_labels.push(end_label)
+      continue_labels.push(continue_label)
+      if lower_cond_jump(
+          out,
+          @ast.Spanned::new(
+            Binary(
+              match dir {
+                To => Le
+                Downto => Ge
+              },
+              counter,
+              bound,
+            ),
+            s.span,
+          ),
+          body_label,
+          end_label,
+          s.span,
+        ) {
+        out.emit(Tai::new(Label, body_label, []).with_span(s.span))
+        emit_stmt(out, body, break_labels, continue_labels)
+        out.emit(Tai::new(Label, continue_label, []).with_span(s.span))
+        if counter.node is Name(counter_name) {
+          out.emit(
+            Tai::new(Instruction, "mov", ["eax", "[\{counter_name}]"]).with_span(
+              s.span,
+            ),
+          )
+          out.emit(
+            Tai::new(
+              Instruction,
+              match dir {
+                To => "add"
+                Downto => "sub"
+              },
+              ["eax", "1"],
+            ).with_span(s.span),
+          )
+          out.emit(
+            Tai::new(Instruction, "mov", ["[\{counter_name}]", "eax"]).with_span(
+              s.span,
+            ),
+          )
+        }
+        out.emit(Tai::new(Instruction, "jmp", [check_label]).with_span(s.span))
+        out.emit(Tai::new(Label, end_label, []).with_span(s.span))
+      } else {
+        out.emit(Tai::new(Comment, "; for", []).with_span(s.span))
+        emit_stmt(out, body, break_labels, continue_labels)
+      }
+      continue_labels.pop() |> ignore
+      break_labels.pop() |> ignore
     }
     Case(_, branches, else_s) => {
       out.emit(Tai::new(Comment, "; case", []).with_span(s.span))
       for b in branches {
-        emit_stmt(out, b.node.body)
+        emit_stmt(out, b.node.body, break_labels, continue_labels)
       }
       if else_s is Some(es) {
-        emit_stmt(out, es)
+        emit_stmt(out, es, break_labels, continue_labels)
       }
     }
-    With(_, body) => emit_stmt(out, body)
+    With(_, body) => emit_stmt(out, body, break_labels, continue_labels)
     TryExcept(try_s, handlers, else_s) => {
-      emit_stmt(out, try_s)
+      emit_stmt(out, try_s, break_labels, continue_labels)
       for h in handlers {
-        emit_stmt(out, h.node.body)
+        emit_stmt(out, h.node.body, break_labels, continue_labels)
       }
       if else_s is Some(es) {
-        emit_stmt(out, es)
+        emit_stmt(out, es, break_labels, continue_labels)
       }
     }
     TryFinally(try_s, finally_s) => {
-      emit_stmt(out, try_s)
-      emit_stmt(out, finally_s)
+      emit_stmt(out, try_s, break_labels, continue_labels)
+      emit_stmt(out, finally_s, break_labels, continue_labels)
     }
     Raise(Some(e)) =>
-      out.emit(Tai::new(Instruction, "raise", [expr_text(e)]).with_span(s.span))
+      out.emit(
+        Tai::new(Comment, "; unsupported raise \{expr_text(e)}", []).with_span(
+          s.span,
+        ),
+      )
     Raise(None) =>
-      out.emit(Tai::new(Instruction, "raise", []).with_span(s.span))
+      out.emit(Tai::new(Comment, "; unsupported raise", []).with_span(s.span))
     Label(name, body) => {
       out.emit(Tai::new(Label, name, []).with_span(s.span))
-      emit_stmt(out, body)
+      emit_stmt(out, body, break_labels, continue_labels)
     }
     Goto(name) =>
       out.emit(Tai::new(Instruction, "jmp", [name]).with_span(s.span))
     Asm(text) => out.emit(Tai::new(Comment, text, []).with_span(s.span))
-    Break => out.emit(Tai::new(Instruction, "break", []).with_span(s.span))
+    Break =>
+      if current_loop_label(break_labels) is Some(label) {
+        out.emit(Tai::new(Instruction, "jmp", [label]).with_span(s.span))
+      } else {
+        out.emit(
+          Tai::new(Comment, "; break outside loop", []).with_span(s.span),
+        )
+      }
     Continue =>
-      out.emit(Tai::new(Instruction, "continue", []).with_span(s.span))
+      if current_loop_label(continue_labels) is Some(label) {
+        out.emit(Tai::new(Instruction, "jmp", [label]).with_span(s.span))
+      } else {
+        out.emit(
+          Tai::new(Comment, "; continue outside loop", []).with_span(s.span),
+        )
+      }
     Exit(Some(e)) => {
       if int_lit(e) is Some(v) {
         out.emit(Tai::new(Instruction, "mov", ["eax", v]).with_span(s.span))
@@ -265,11 +404,13 @@ fn emit_global_decl(out : AsmData, d : @ast.Spanned[@ast.Decl]) -> Unit {
 
 ///|
 fn emit_block(out : AsmData, block : @ast.Spanned[@ast.Block]) -> Unit {
+  let break_labels = []
+  let continue_labels = []
   for d in block.node.decls {
     emit_global_decl(out, d)
   }
   for s in block.node.stmts {
-    emit_stmt(out, s)
+    emit_stmt(out, s, break_labels, continue_labels)
   }
 }
 
@@ -283,6 +424,8 @@ pub fn lower_compilation_unit(
     LibraryUnit(l) => l.name
   }
   let out = AsmData::new(name)
+  let break_labels = []
+  let continue_labels = []
   out.switch(Procedures)
   out.emit(Tai::new(Section, ".text", []).with_span(cu.span))
   out.emit(Tai::new(Label, "main", []).with_span(cu.span))
@@ -291,22 +434,22 @@ pub fn lower_compilation_unit(
     ProgramUnit(p) => {
       emit_block(out, p.block)
       for s in p.finalization {
-        emit_stmt(out, s)
+        emit_stmt(out, s, break_labels, continue_labels)
       }
     }
     UnitModule(u) => {
       emit_block(out, u.implementation_block)
       for s in u.initialization {
-        emit_stmt(out, s)
+        emit_stmt(out, s, break_labels, continue_labels)
       }
       for s in u.finalization {
-        emit_stmt(out, s)
+        emit_stmt(out, s, break_labels, continue_labels)
       }
     }
     LibraryUnit(l) => {
       emit_block(out, l.block)
       for s in l.finalization {
-        emit_stmt(out, s)
+        emit_stmt(out, s, break_labels, continue_labels)
       }
     }
   }

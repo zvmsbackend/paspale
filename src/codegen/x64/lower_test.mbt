@@ -8,7 +8,7 @@ test "lower compilation unit emits call and mov" {
   assert_true(text.contains("[procedures]"))
   assert_true(text.contains("main"))
   assert_true(text.contains("mov [x], 1"))
-  assert_true(text.contains("; call Foo"))
+  assert_true(text.contains("call Foo"))
 }
 
 ///|
@@ -20,8 +20,8 @@ test "lower arithmetic literal expression to add/sub" {
   let out = @x64.lower_compilation_unit(cu)
   let text = out.render()
 
-  assert_true(text.contains("add eax, 2"))
-  assert_true(text.contains("sub eax, 3"))
+  assert_true(text.contains("add ebx, eax"))
+  assert_true(text.contains("sub ebx, eax"))
 }
 
 ///|
@@ -34,7 +34,38 @@ test "lower conditional flow to cmp and jumps" {
   let out = @x64.lower_compilation_unit(cu)
   let text = out.render()
 
-  assert_true(text.contains("cmp eax, 2"))
+  assert_true(text.contains("cmp eax, ebx"))
   assert_true(text.contains("jl .L_if_then"))
   assert_true(text.contains("jmp .L_if_else"))
+}
+
+///|
+test "lower repeat and for statements to loop labels" {
+  let sink = @diag.DiagSink::new()
+  let cu = @parser.parse_text(
+    0, "program P; var i: integer; begin repeat i := i + 1; until i > 2; for i := 1 to 3 do i := i + 1; end.",
+    sink,
+  )
+  let out = @x64.lower_compilation_unit(cu)
+  let text = out.render()
+
+  assert_true(text.contains(".L_repeat_loop"))
+  assert_true(text.contains(".L_repeat_end"))
+  assert_true(text.contains(".L_for_check"))
+  assert_true(text.contains(".L_for_continue"))
+  assert_true(text.contains(".L_for_end"))
+}
+
+///|
+test "lower break and continue to jmp" {
+  let sink = @diag.DiagSink::new()
+  let cu = @parser.parse_text(
+    0, "program P; var i: integer; begin while i < 10 do begin continue; break; end; end.",
+    sink,
+  )
+  let out = @x64.lower_compilation_unit(cu)
+  let text = out.render()
+
+  assert_true(text.contains("jmp .L_while_loop"))
+  assert_true(text.contains("jmp .L_while_end"))
 }

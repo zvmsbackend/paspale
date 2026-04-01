@@ -205,6 +205,11 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
         out.write_string(label)
         out.write_string("\n")
       }
+      { kind: Instruction, opcode: "call", operands: [callee], .. } => {
+        out.write_string("  call ")
+        out.write_string(callee)
+        out.write_string("\n")
+      }
       { kind: Instruction, opcode, operands: [label], .. } =>
         if is_jcc(opcode) {
           out.write_string("  ")
