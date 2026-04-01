@@ -214,3 +214,33 @@ test "semantic reports non-ordinal for-loop bounds" {
 
   assert_true(has_diag_code(sink, "S0032"))
 }
+
+///|
+test "semantic reports non-ordinal case selector" {
+  let sink = @diag.DiagSink::new()
+  let src = "program P; var r: real; begin case r of 1: ; end; end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0032"))
+}
+
+///|
+test "semantic reports incompatible case label type" {
+  let sink = @diag.DiagSink::new()
+  let src = "program P; var i: integer; begin case i of 'x': ; end; end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0034"))
+}
+
+///|
+test "semantic reports duplicate literal case labels" {
+  let sink = @diag.DiagSink::new()
+  let src = "program P; var i: integer; begin case i of 1: ; 1: ; end; end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0035"))
+}

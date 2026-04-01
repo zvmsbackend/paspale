@@ -361,6 +361,61 @@ fn Resolver::flatten_param_signature(
 }
 
 ///|
+fn Resolver::case_label_key(
+  self : Resolver,
+  e : @ast.Spanned[@ast.Expr],
+) -> String? {
+  let _ = self
+  match e.node {
+    Literal(Int(v)) => Some("I:\{v}")
+    Literal(String(v)) => Some("S:\{v}")
+    Literal(Bool(v)) => Some("B:\{v}")
+    _ => None
+  }
+}
+
+///|
+fn Resolver::check_case_label_compat(
+  self : Resolver,
+  selector_ty : TypeRef,
+  label : @ast.Spanned[@ast.Expr],
+) -> Unit {
+  match label.node {
+    Range(lo, hi) => {
+      let lty = self.infer_expr_type(lo)
+      let hty = self.infer_expr_type(hi)
+      if !self.types.is_assignable_from(selector_ty, lty) &&
+        !self.types.is_compatible_with(selector_ty, lty) {
+        self.sink.push_error(
+          "S0034",
+          "case label type is incompatible with selector",
+          lo.span,
+        )
+      }
+      if !self.types.is_assignable_from(selector_ty, hty) &&
+        !self.types.is_compatible_with(selector_ty, hty) {
+        self.sink.push_error(
+          "S0034",
+          "case label type is incompatible with selector",
+          hi.span,
+        )
+      }
+    }
+    _ => {
+      let lty = self.infer_expr_type(label)
+      if !self.types.is_assignable_from(selector_ty, lty) &&
+        !self.types.is_compatible_with(selector_ty, lty) {
+        self.sink.push_error(
+          "S0034",
+          "case label type is incompatible with selector",
+          label.span,
+        )
+      }
+    }
+  }
+}
+
+///|
 fn Resolver::pop_return_type(self : Resolver) -> Unit {
   if self.return_type_stack.length() > 0 {
     self.return_type_stack.pop() |> ignore
@@ -697,10 +752,27 @@ fn Resolver::resolve_stmt(self : Resolver, s : @ast.Spanned[@ast.Stmt]) -> Unit 
       }
     }
     Case(cond, branches, else_s) => {
-      self.resolve_expr(cond)
+      let cty = self.infer_expr_type(cond)
+      self.expect_ordinal(cty, cond.span)
+      let seen_labels = Set::new()
       for b in branches {
         for lbl in b.node.labels {
-          self.resolve_expr(lbl)
+          self.check_case_label_compat(cty, lbl)
+          match lbl.node {
+            Range(_, _) => ()
+            _ =>
+              if self.case_label_key(lbl) is Some(key) {
+                if seen_labels.contains(key) {
+                  self.sink.push_error(
+                    "S0035",
+                    "duplicate case label",
+                    lbl.span,
+                  )
+                } else {
+                  seen_labels.add(key)
+                }
+              }
+          }
         }
         self.resolve_stmt(b.node.body)
       }
