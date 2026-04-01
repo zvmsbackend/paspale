@@ -48,13 +48,13 @@ pub fn Tai::with_span(self : Tai, pos : @diag.Span) -> Tai {
 ///|
 pub struct AsmData {
   name : String
-  procedures : Array[Tai]
-  globals : Array[Tai]
-  const_data : Array[Tai]
-  imports : Array[Tai]
-  exports : Array[Tai]
-  rtti : Array[Tai]
-  dwarf_info : Array[Tai]
+  mut procedures : Array[Tai]
+  mut globals : Array[Tai]
+  mut const_data : Array[Tai]
+  mut imports : Array[Tai]
+  mut exports : Array[Tai]
+  mut rtti : Array[Tai]
+  mut dwarf_info : Array[Tai]
   mut current : AsmListKind
 }
 

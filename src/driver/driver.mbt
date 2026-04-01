@@ -10,6 +10,7 @@ pub(all) enum CompileStage {
   Analyze
   FirstPass
   SecondPass
+  Optimize
 } derive(Show, Eq)
 
 ///|
@@ -29,6 +30,7 @@ pub struct CompileOutput {
   resolver : @semantic.Resolver?
   ir : @ir.ModuleIr
   aasm_output : @x64.AsmData?
+  optimize_report : @x64.OptimizeReport?
   stages : Array[CompileStage]
 }
 
@@ -72,6 +74,15 @@ fn run_second_pass(
 }
 
 ///|
+fn run_optimize_pass(
+  module_ir : @ir.ModuleIr,
+  lowered : @x64.AsmData,
+) -> (@x64.AsmData, @x64.OptimizeReport) {
+  let _ = module_ir
+  @x64.optimize_aasm(lowered)
+}
+
+///|
 fn should_continue(sink : @diag.DiagSink, options : CompileOptions) -> Bool {
   !options.stop_on_error || !sink.has_error()
 }
@@ -92,6 +103,7 @@ pub fn compile_tokens(
       resolver: None,
       ir: module_ir,
       aasm_output: None,
+      optimize_report: None,
       stages,
     }
   }
@@ -106,6 +118,7 @@ pub fn compile_tokens(
       resolver: None,
       ir: module_ir,
       aasm_output: None,
+      optimize_report: None,
       stages,
     }
   }
@@ -119,6 +132,7 @@ pub fn compile_tokens(
       resolver: Some(resolver),
       ir: module_ir,
       aasm_output: None,
+      optimize_report: None,
       stages,
     }
   }
@@ -129,12 +143,16 @@ pub fn compile_tokens(
   let lowered = run_second_pass(module_ir, unit, resolver)
   mark_stage(stages, module_ir, SecondPass)
 
+  let (optimized, optimize_report) = run_optimize_pass(module_ir, lowered)
+  mark_stage(stages, module_ir, Optimize)
+
   {
     tokens,
     unit: Some(unit),
     resolver: Some(resolver),
     ir: module_ir,
-    aasm_output: Some(lowered),
+    aasm_output: Some(optimized),
+    optimize_report: Some(optimize_report),
     stages,
   }
 }

@@ -32,6 +32,7 @@ pub struct CompileOutput {
   resolver : @semantic.Resolver?
   ir : @ir.ModuleIr
   aasm_output : @x64.AsmData?
+  optimize_report : @x64.OptimizeReport?
   stages : Array[CompileStage]
 }
 
@@ -41,6 +42,7 @@ pub(all) enum CompileStage {
   Analyze
   FirstPass
   SecondPass
+  Optimize
 } derive(Eq, Show)
 
 pub struct ModuleGraph {

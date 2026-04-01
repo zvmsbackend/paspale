@@ -11,13 +11,14 @@ test "driver pipeline succeeds for valid input" {
   assert_true(output.unit is Some(_))
   assert_true(output.resolver is Some(_))
   assert_eq(output.tokens.length() > 0, true)
-  assert_eq(output.stages.length(), 5)
+  assert_eq(output.stages.length(), 6)
   assert_true(output.ir.reached(Parsed))
   assert_true(output.ir.reached(Resolved))
   assert_true(output.ir.reached(FirstPassed))
   assert_true(output.ir.reached(SecondPassed))
   assert_true(output.ir.first_pass is Some(_))
   assert_true(output.aasm_output is Some(_))
+  assert_true(output.optimize_report is Some(_))
   assert_false(sink.has_error())
 }
 
@@ -35,6 +36,7 @@ test "driver stop_on_error halts after lexing" {
   assert_true(output.unit is None)
   assert_true(output.resolver is None)
   assert_true(output.aasm_output is None)
+  assert_true(output.optimize_report is None)
   assert_eq(output.stages.length(), 0)
   assert_false(output.ir.reached(Parsed))
 }
@@ -51,6 +53,7 @@ test "driver can continue after diagnostics" {
   assert_true(output.unit is Some(_))
   assert_true(output.resolver is Some(_))
   assert_true(output.aasm_output is Some(_))
-  assert_eq(output.stages.length(), 5)
+  assert_true(output.optimize_report is Some(_))
+  assert_eq(output.stages.length(), 6)
   assert_true(output.ir.reached(SecondPassed))
 }
