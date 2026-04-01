@@ -70,6 +70,14 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
   fn is_int(op : String) {
     (try? @string.parse_int(op)) is Ok(_)
   }
+  fn is_jcc(op : String) {
+    op == "je" ||
+    op == "jne" ||
+    op == "jl" ||
+    op == "jle" ||
+    op == "jg" ||
+    op == "jge"
+  }
 
   let out = StringBuilder::new()
   out.write_string(".intel_syntax noprefix\n")
@@ -102,6 +110,32 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
           out.write_string(", ")
           out.write_string(src)
           out.write_string("\n")
+        }
+      { kind: Instruction, opcode: "cmp", operands: [dst, src], .. } =>
+        if is_reg(dst) && (is_reg(src) || is_int(src)) {
+          out.write_string("  cmp ")
+          out.write_string(dst)
+          out.write_string(", ")
+          out.write_string(src)
+          out.write_string("\n")
+        }
+      { kind: Instruction, opcode: "jmp", operands: [label], .. } => {
+        out.write_string("  jmp ")
+        out.write_string(label)
+        out.write_string("\n")
+      }
+      { kind: Instruction, opcode, operands: [label], .. } =>
+        if is_jcc(opcode) {
+          out.write_string("  ")
+          out.write_string(opcode)
+          out.write_string(" ")
+          out.write_string(label)
+          out.write_string("\n")
+        }
+      { kind: Label, opcode: label, .. } =>
+        if label != "main" {
+          out.write_string(label)
+          out.write_string(":\n")
         }
       { kind: Instruction, opcode: "ret", .. } => {
         out.write_string("  ret\n")

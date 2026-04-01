@@ -67,6 +67,49 @@ fn lower_int_expr(
 }
 
 ///|
+fn fresh_label(out : AsmData, prefix : String) -> String {
+  "\{prefix}_\{out.procedures.length()}"
+}
+
+///|
+fn cond_jcc(op : @ast.BinaryOp) -> String? {
+  match op {
+    Eq => Some("je")
+    Ne => Some("jne")
+    Lt => Some("jl")
+    Le => Some("jle")
+    Gt => Some("jg")
+    Ge => Some("jge")
+    _ => None
+  }
+}
+
+///|
+fn lower_cond_jump(
+  out : AsmData,
+  cond : @ast.Spanned[@ast.Expr],
+  true_label : String,
+  false_label : String,
+  span : @diag.Span,
+) -> Bool {
+  match cond.node {
+    Binary(op, lhs, rhs) =>
+      if cond_jcc(op) is Some(jcc) &&
+        int_lit(lhs) is Some(a) &&
+        int_lit(rhs) is Some(b) {
+        out.emit(Tai::new(Instruction, "mov", ["eax", a]).with_span(span))
+        out.emit(Tai::new(Instruction, "cmp", ["eax", b]).with_span(span))
+        out.emit(Tai::new(Instruction, jcc, [true_label]).with_span(span))
+        out.emit(Tai::new(Instruction, "jmp", [false_label]).with_span(span))
+        true
+      } else {
+        false
+      }
+    _ => false
+  }
+}
+
+///|
 fn emit_assign(
   out : AsmData,
   lhs : @ast.Spanned[@ast.Expr],
@@ -107,16 +150,41 @@ fn emit_stmt(out : AsmData, s : @ast.Spanned[@ast.Stmt]) -> Unit {
       out.emit(
         Tai::new(Comment, "; call \{expr_text(callee)}", []).with_span(s.span),
       )
-    If(_, then_s, else_s) => {
-      out.emit(Tai::new(Comment, "; if", []).with_span(s.span))
-      emit_stmt(out, then_s)
-      if else_s is Some(es) {
-        emit_stmt(out, es)
+    If(cond, then_s, else_s) => {
+      let then_label = fresh_label(out, ".L_if_then")
+      let else_label = fresh_label(out, ".L_if_else")
+      let end_label = fresh_label(out, ".L_if_end")
+      if lower_cond_jump(out, cond, then_label, else_label, s.span) {
+        out.emit(Tai::new(Label, then_label, []).with_span(s.span))
+        emit_stmt(out, then_s)
+        out.emit(Tai::new(Instruction, "jmp", [end_label]).with_span(s.span))
+        out.emit(Tai::new(Label, else_label, []).with_span(s.span))
+        if else_s is Some(es) {
+          emit_stmt(out, es)
+        }
+        out.emit(Tai::new(Label, end_label, []).with_span(s.span))
+      } else {
+        out.emit(Tai::new(Comment, "; if", []).with_span(s.span))
+        emit_stmt(out, then_s)
+        if else_s is Some(es) {
+          emit_stmt(out, es)
+        }
       }
     }
-    While(_, body) => {
-      out.emit(Tai::new(Comment, "; while", []).with_span(s.span))
-      emit_stmt(out, body)
+    While(cond, body) => {
+      let loop_label = fresh_label(out, ".L_while_loop")
+      let body_label = fresh_label(out, ".L_while_body")
+      let end_label = fresh_label(out, ".L_while_end")
+      out.emit(Tai::new(Label, loop_label, []).with_span(s.span))
+      if lower_cond_jump(out, cond, body_label, end_label, s.span) {
+        out.emit(Tai::new(Label, body_label, []).with_span(s.span))
+        emit_stmt(out, body)
+        out.emit(Tai::new(Instruction, "jmp", [loop_label]).with_span(s.span))
+        out.emit(Tai::new(Label, end_label, []).with_span(s.span))
+      } else {
+        out.emit(Tai::new(Comment, "; while", []).with_span(s.span))
+        emit_stmt(out, body)
+      }
     }
     RepeatUntil(stmts, _) =>
       for st in stmts {
