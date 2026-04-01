@@ -1,11 +1,56 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "sennenki/paspale/ir"
 
+import {
+  "moonbitlang/core/set",
+  "sennenki/paspale/diag",
+}
+
 // Values
 
 // Errors
 
 // Types and methods
+pub(all) enum IrStage {
+  Parsed
+  Resolved
+  FirstPassed
+  SecondPassed
+} derive(Eq, Show)
+
+pub struct ModuleIr {
+  stages : Array[IrStage]
+  procs : Array[ProcInfo]
+  opts : Array[OptInfo]
+}
+pub fn ModuleIr::add_opt(Self, OptInfo) -> Unit
+pub fn ModuleIr::add_proc(Self, ProcInfo) -> Unit
+pub fn ModuleIr::mark_stage(Self, IrStage) -> Unit
+pub fn ModuleIr::new() -> Self
+pub fn ModuleIr::reached(Self, IrStage) -> Bool
+
+pub struct OptInfo {
+  index : Int
+  def_set : @set.Set[Int]
+  use_set : @set.Set[Int]
+  life_set : @set.Set[Int]
+  defsum_set : @set.Set[Int]
+}
+pub fn OptInfo::new(Int) -> Self
+
+pub struct ProcInfo {
+  proc_sym : Int
+  parent_proc : Int?
+  entry_pos : @diag.Span
+  exit_pos : @diag.Span
+  flags : Int
+  para_stack_size : Int
+  temp_start : Int
+  curr_break_label : String?
+  curr_continue_label : String?
+  curr_exit_label : String
+}
+pub fn ProcInfo::new(Int, @diag.Span, @diag.Span) -> Self
 
 // Type aliases
 

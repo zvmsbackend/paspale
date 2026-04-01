@@ -4,6 +4,7 @@ package "sennenki/paspale/driver"
 import {
   "sennenki/paspale/ast",
   "sennenki/paspale/diag",
+  "sennenki/paspale/ir",
   "sennenki/paspale/lexer",
   "sennenki/paspale/semantic",
 }
@@ -26,7 +27,17 @@ pub struct CompileOutput {
   tokens : Array[@lexer.SpannedToken]
   unit : @ast.Spanned[@ast.CompilationUnit]?
   resolver : @semantic.Resolver?
+  ir : @ir.ModuleIr
+  stages : Array[CompileStage]
 }
+
+pub(all) enum CompileStage {
+  Lex
+  Parse
+  Analyze
+  FirstPass
+  SecondPass
+} derive(Eq, Show)
 
 // Type aliases
 

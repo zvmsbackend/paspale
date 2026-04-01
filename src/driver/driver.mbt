@@ -4,6 +4,15 @@ pub struct CompileOptions {
 }
 
 ///|
+pub(all) enum CompileStage {
+  Lex
+  Parse
+  Analyze
+  FirstPass
+  SecondPass
+} derive(Show, Eq)
+
+///|
 pub fn CompileOptions::new(stop_on_error : Bool) -> CompileOptions {
   { stop_on_error, }
 }
@@ -18,6 +27,42 @@ pub struct CompileOutput {
   tokens : Array[@lexer.SpannedToken]
   unit : @ast.Spanned[@ast.CompilationUnit]?
   resolver : @semantic.Resolver?
+  ir : @ir.ModuleIr
+  stages : Array[CompileStage]
+}
+
+///|
+fn mark_stage(
+  stages : Array[CompileStage],
+  module_ir : @ir.ModuleIr,
+  stage : CompileStage,
+) -> Unit {
+  stages.push(stage)
+  match stage {
+    Parse => module_ir.mark_stage(Parsed)
+    Analyze => module_ir.mark_stage(Resolved)
+    FirstPass => module_ir.mark_stage(FirstPassed)
+    SecondPass => module_ir.mark_stage(SecondPassed)
+    _ => ()
+  }
+}
+
+///|
+fn run_first_pass(
+  module_ir : @ir.ModuleIr,
+  resolver : @semantic.Resolver,
+) -> Unit {
+  let _ = resolver
+  module_ir.mark_stage(FirstPassed)
+}
+
+///|
+fn run_second_pass(
+  module_ir : @ir.ModuleIr,
+  resolver : @semantic.Resolver,
+) -> Unit {
+  let _ = resolver
+  module_ir.mark_stage(SecondPassed)
 }
 
 ///|
@@ -32,17 +77,38 @@ pub fn compile_tokens(
   sink : @diag.DiagSink,
   options : CompileOptions,
 ) -> CompileOutput {
+  let module_ir = @ir.ModuleIr::new()
+  let stages = []
   if !should_continue(sink, options) {
-    return { tokens, unit: None, resolver: None }
+    return { tokens, unit: None, resolver: None, ir: module_ir, stages }
   }
 
+  mark_stage(stages, module_ir, Lex)
   let unit = @parser.parse_tokens(file_id, tokens, sink)
+  mark_stage(stages, module_ir, Parse)
   if !should_continue(sink, options) {
-    return { tokens, unit: Some(unit), resolver: None }
+    return { tokens, unit: Some(unit), resolver: None, ir: module_ir, stages }
   }
 
   let resolver = @semantic.analyze(unit, sink)
-  { tokens, unit: Some(unit), resolver: Some(resolver) }
+  mark_stage(stages, module_ir, Analyze)
+  if !should_continue(sink, options) {
+    return {
+      tokens,
+      unit: Some(unit),
+      resolver: Some(resolver),
+      ir: module_ir,
+      stages,
+    }
+  }
+
+  run_first_pass(module_ir, resolver)
+  mark_stage(stages, module_ir, FirstPass)
+
+  run_second_pass(module_ir, resolver)
+  mark_stage(stages, module_ir, SecondPass)
+
+  { tokens, unit: Some(unit), resolver: Some(resolver), ir: module_ir, stages }
 }
 
 ///|
