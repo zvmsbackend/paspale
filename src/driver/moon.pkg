@@ -1,6 +1,7 @@
 import {
   "sennenki/paspale/ast",
   "sennenki/paspale/codegen/x64",
+  "sennenki/paspale/common",
   "sennenki/paspale/diag",
   "sennenki/paspale/ir",
   "sennenki/paspale/lexer",

@@ -11,6 +11,8 @@ import {
 }
 
 // Values
+pub fn collect_module_graph(Array[@ast.Spanned[@ast.CompilationUnit]]) -> ModuleGraph
+
 pub fn compile_text(Int, String, @diag.DiagSink, CompileOptions) -> CompileOutput
 
 pub fn compile_tokens(Int, Array[@lexer.SpannedToken], @diag.DiagSink, CompileOptions) -> CompileOutput
@@ -40,6 +42,18 @@ pub(all) enum CompileStage {
   FirstPass
   SecondPass
 } derive(Eq, Show)
+
+pub struct ModuleGraph {
+  nodes : Map[String, UnitNode]
+  keys : Array[String]
+}
+pub fn ModuleGraph::direct_deps(Self, String) -> Array[String]
+pub fn ModuleGraph::topo_order(Self) -> Array[String]
+
+pub struct UnitNode {
+  name : String
+  uses : Array[String]
+}
 
 // Type aliases
 
