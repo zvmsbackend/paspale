@@ -194,3 +194,23 @@ test "semantic flattens grouped parameter names for arity" {
 
   assert_false(has_diag_code(sink, "S0016"))
 }
+
+///|
+test "semantic reports non-assignable for-loop control variable" {
+  let sink = @diag.DiagSink::new()
+  let src = "program P; begin for 1 := 1 to 10 do begin end; end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0031"))
+}
+
+///|
+test "semantic reports non-ordinal for-loop bounds" {
+  let sink = @diag.DiagSink::new()
+  let src = "program P; var r: real; begin for r := 1.5 to 3.5 do begin end; end."
+  let cu = @parser.parse_text(0, src, sink)
+  let _ = @semantic.analyze(cu, sink)
+
+  assert_true(has_diag_code(sink, "S0032"))
+}

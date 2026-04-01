@@ -89,6 +89,17 @@ fn Resolver::expect_numeric(
 }
 
 ///|
+fn Resolver::expect_ordinal(
+  self : Resolver,
+  ty : TypeRef,
+  span : @diag.Span,
+) -> Unit {
+  if !self.types.is_ordinal(ty) {
+    self.sink.push_error("S0032", "expected ordinal expression", span)
+  }
+}
+
+///|
 fn Resolver::resolve_call(
   self : Resolver,
   callee : @ast.Spanned[@ast.Expr],
@@ -712,7 +723,16 @@ fn Resolver::resolve_stmt(self : Resolver, s : @ast.Spanned[@ast.Stmt]) -> Unit 
       let vty = self.infer_expr_type(loop_var)
       let fty = self.infer_expr_type(from_)
       let tty = self.infer_expr_type(to_)
-      self.expect_numeric(vty, loop_var.span)
+      if !self.is_assignable_expr(loop_var) {
+        self.sink.push_error(
+          "S0031",
+          "for-loop control variable must be assignable",
+          loop_var.span,
+        )
+      }
+      self.expect_ordinal(vty, loop_var.span)
+      self.expect_ordinal(fty, from_.span)
+      self.expect_ordinal(tty, to_.span)
       if !self.types.is_assignable_from(vty, fty) {
         self.sink.push_error(
           "S0010",
