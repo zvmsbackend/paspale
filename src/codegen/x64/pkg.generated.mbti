@@ -1,11 +1,61 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "sennenki/paspale/codegen/x64"
 
+import {
+  "sennenki/paspale/diag",
+}
+
 // Values
 
 // Errors
 
 // Types and methods
+pub struct AsmData {
+  name : String
+  procedures : Array[Tai]
+  globals : Array[Tai]
+  const_data : Array[Tai]
+  imports : Array[Tai]
+  exports : Array[Tai]
+  rtti : Array[Tai]
+  dwarf_info : Array[Tai]
+  mut current : AsmListKind
+}
+pub fn AsmData::emit(Self, Tai) -> Unit
+pub fn AsmData::new(String) -> Self
+pub fn AsmData::render(Self) -> String
+pub fn AsmData::switch(Self, AsmListKind) -> Unit
+
+pub(all) enum AsmListKind {
+  Procedures
+  Globals
+  ConstData
+  Imports
+  Exports
+  Rtti
+  DwarfInfo
+} derive(Eq, Show)
+
+pub struct Tai {
+  kind : TaiKind
+  opcode : String
+  operands : Array[String]
+  mut pos : @diag.Span?
+}
+pub fn Tai::new(TaiKind, String, Array[String]) -> Self
+pub fn Tai::with_span(Self, @diag.Span) -> Self
+
+pub(all) enum TaiKind {
+  Align
+  Section
+  Comment
+  Instruction
+  Label
+  Const
+  Symbol
+  SymbolEnd
+  Marker
+} derive(Eq, Show)
 
 // Type aliases
 

@@ -65,11 +65,12 @@ pub struct ModuleIr {
   stages : Array[IrStage]
   procs : Array[ProcInfo]
   opts : Array[OptInfo]
+  mut first_pass : FirstPassReport?
 }
 
 ///|
 pub fn ModuleIr::new() -> ModuleIr {
-  { stages: [], procs: [], opts: [] }
+  { stages: [], procs: [], opts: [], first_pass: None }
 }
 
 ///|
@@ -92,4 +93,23 @@ pub fn ModuleIr::add_proc(self : ModuleIr, proc_info : ProcInfo) -> Unit {
 ///|
 pub fn ModuleIr::add_opt(self : ModuleIr, opt_info : OptInfo) -> Unit {
   self.opts.push(opt_info)
+}
+
+///|
+pub struct FirstPassReport {
+  mut folded_unary : Int
+  mut folded_binary : Int
+}
+
+///|
+pub fn FirstPassReport::new() -> FirstPassReport {
+  { folded_unary: 0, folded_binary: 0 }
+}
+
+///|
+pub fn ModuleIr::set_first_pass_report(
+  self : ModuleIr,
+  report : FirstPassReport,
+) -> Unit {
+  self.first_pass = Some(report)
 }

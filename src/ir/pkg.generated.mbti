@@ -3,14 +3,22 @@ package "sennenki/paspale/ir"
 
 import {
   "moonbitlang/core/set",
+  "sennenki/paspale/ast",
   "sennenki/paspale/diag",
 }
 
 // Values
+pub fn run_first_pass(@ast.Spanned[@ast.CompilationUnit]) -> FirstPassReport
 
 // Errors
 
 // Types and methods
+pub struct FirstPassReport {
+  mut folded_unary : Int
+  mut folded_binary : Int
+}
+pub fn FirstPassReport::new() -> Self
+
 pub(all) enum IrStage {
   Parsed
   Resolved
@@ -22,12 +30,14 @@ pub struct ModuleIr {
   stages : Array[IrStage]
   procs : Array[ProcInfo]
   opts : Array[OptInfo]
+  mut first_pass : FirstPassReport?
 }
 pub fn ModuleIr::add_opt(Self, OptInfo) -> Unit
 pub fn ModuleIr::add_proc(Self, ProcInfo) -> Unit
 pub fn ModuleIr::mark_stage(Self, IrStage) -> Unit
 pub fn ModuleIr::new() -> Self
 pub fn ModuleIr::reached(Self, IrStage) -> Bool
+pub fn ModuleIr::set_first_pass_report(Self, FirstPassReport) -> Unit
 
 pub struct OptInfo {
   index : Int

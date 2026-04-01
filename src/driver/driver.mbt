@@ -50,9 +50,12 @@ fn mark_stage(
 ///|
 fn run_first_pass(
   module_ir : @ir.ModuleIr,
+  unit : @ast.Spanned[@ast.CompilationUnit],
   resolver : @semantic.Resolver,
 ) -> Unit {
   let _ = resolver
+  let report = @ir.run_first_pass(unit)
+  module_ir.set_first_pass_report(report)
   module_ir.mark_stage(FirstPassed)
 }
 
@@ -102,7 +105,7 @@ pub fn compile_tokens(
     }
   }
 
-  run_first_pass(module_ir, resolver)
+  run_first_pass(module_ir, unit, resolver)
   mark_stage(stages, module_ir, FirstPass)
 
   run_second_pass(module_ir, resolver)

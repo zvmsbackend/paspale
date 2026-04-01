@@ -31,3 +31,15 @@ test "opt info starts with empty sets" {
   assert_eq(opt.life_set.length(), 0)
   assert_eq(opt.defsum_set.length(), 0)
 }
+
+///|
+test "first pass reports foldable integer expressions" {
+  let sink = @diag.DiagSink::new()
+  let cu = @parser.parse_text(
+    0, "program P; begin x := 1 + 2 * 3; y := -(4 + 5); end.", sink,
+  )
+  let report = @ir.run_first_pass(cu)
+
+  assert_true(report.folded_binary >= 2)
+  assert_true(report.folded_unary >= 1)
+}

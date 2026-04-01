@@ -16,6 +16,7 @@ test "driver pipeline succeeds for valid input" {
   assert_true(output.ir.reached(Resolved))
   assert_true(output.ir.reached(FirstPassed))
   assert_true(output.ir.reached(SecondPassed))
+  assert_true(output.ir.first_pass is Some(_))
   assert_false(sink.has_error())
 }
 
