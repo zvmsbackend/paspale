@@ -1,0 +1,10 @@
+import {
+  "moonbitlang/core/argparse",
+  "sennenki/paspale/diag",
+  "sennenki/paspale/driver",
+  "moonbitlang/x/fs",
+}
+
+options(
+  is_main: true,
+)
