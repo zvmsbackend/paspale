@@ -15,12 +15,37 @@ fn input_path(matches : @argparse.Matches) -> String? {
 }
 
 ///|
-fn main {
+fn toolchain_from_matches(
+  matches : @argparse.Matches,
+) -> @driver.BackendToolchain {
+  let assembler = match first_value(matches, "assembler") {
+    Some(s) => s
+    None => "cc"
+  }
+  let linker = match first_value(matches, "linker") {
+    Some(s) => s
+    None => "cc"
+  }
+  @driver.BackendToolchain::new(assembler, linker, ["-c", "-fno-pie"], [
+    "-no-pie",
+  ])
+}
+
+///|
+async fn main {
   let cmd = @argparse.Command::new(
     "paspale",
     about="Pascal front-end driver",
     options=[
       @argparse.OptionArg::new("file", short='f', about="input Pascal file"),
+      @argparse.OptionArg::new(
+        "assembler",
+        about="assembler executable (default: cc)",
+      ),
+      @argparse.OptionArg::new(
+        "linker",
+        about="linker executable (default: cc)",
+      ),
     ],
     flags=[
       @argparse.FlagArg::new(
@@ -62,14 +87,16 @@ fn main {
   let continue_on_error = matches.flags.get_or_default(
     "continue-on-error", false,
   )
+  let toolchain = toolchain_from_matches(matches)
   let options = @driver.CompileOptions::new(!continue_on_error)
   let output = @driver.compile_text(file_id, source, sink, options)
 
   if sink.length() == 0 {
-    let linked = @driver.emit_and_link(
+    let linked = @driver.emit_and_link_with(
       output,
       "_build",
       @path.Path(path).basename().to_string(),
+      toolchain,
     )
     match linked {
       Ok(done) => {
@@ -88,7 +115,7 @@ fn main {
           println("exe: ")
           println(p)
         }
-        if @driver.toolchain_plan(done) is Some(plan) {
+        if @driver.toolchain_plan_with(done, toolchain) is Some(plan) {
           println("assemble cmd: ")
           println(plan.assemble_cmd)
           println("link cmd: ")

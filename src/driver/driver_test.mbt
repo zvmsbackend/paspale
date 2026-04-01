@@ -57,3 +57,29 @@ test "driver can continue after diagnostics" {
   assert_eq(output.stages.length(), 6)
   assert_true(output.ir.reached(SecondPassed))
 }
+
+///|
+test "toolchain plan supports custom assembler and linker" {
+  let out : @driver.CompileOutput = {
+    tokens: [],
+    unit: None,
+    resolver: None,
+    ir: @ir.ModuleIr::new(),
+    aasm_output: None,
+    optimize_report: None,
+    asm_path: Some("/tmp/demo.s"),
+    object_path: Some("/tmp/demo.o"),
+    executable_path: Some("/tmp/demo"),
+    stages: [],
+  }
+  let toolchain = @driver.BackendToolchain::new("clang", "ld", ["-c", "-m64"], [
+    "-m", "elf_x86_64",
+  ])
+  guard @driver.toolchain_plan_with(out, toolchain) is Some(plan) else {
+    fail("expected toolchain plan")
+  }
+  assert_true(plan.assemble_cmd.contains("clang"))
+  assert_true(plan.assemble_cmd.contains("-m64"))
+  assert_true(plan.link_cmd.contains("ld"))
+  assert_true(plan.link_cmd.contains("elf_x86_64"))
+}

@@ -1,4 +1,5 @@
 import {
+  "moonbitlang/async/process",
   "moonbitlang/core/string",
   "moonbitlang/x/fs",
   "moonbitlang/x/path",
@@ -11,3 +12,5 @@ import {
   "sennenki/paspale/parser",
   "sennenki/paspale/semantic",
 }
+
+supported_targets = "+native"

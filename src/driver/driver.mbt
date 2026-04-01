@@ -56,6 +56,69 @@ pub struct ToolchainPlan {
 }
 
 ///|
+pub struct BackendToolchain {
+  assembler : String
+  linker : String
+  assemble_flags : Array[String]
+  link_flags : Array[String]
+}
+
+///|
+pub fn BackendToolchain::new(
+  assembler : String,
+  linker : String,
+  assemble_flags : Array[String],
+  link_flags : Array[String],
+) -> BackendToolchain {
+  { assembler, linker, assemble_flags, link_flags }
+}
+
+///|
+pub fn BackendToolchain::default() -> BackendToolchain {
+  {
+    assembler: "cc",
+    linker: "cc",
+    assemble_flags: ["-c", "-fno-pie"],
+    link_flags: ["-no-pie"],
+  }
+}
+
+///|
+fn shell_quote(value : String) -> String {
+  let escaped = value.replace_all(old="\"", new="\\\"")
+  "\"\{escaped}\""
+}
+
+///|
+fn render_cmd(program : String, args : Array[String]) -> String {
+  let out = StringBuilder::new()
+  out.write_string(program)
+  for arg in args {
+    out.write_string(" ")
+    out.write_string(shell_quote(arg))
+  }
+  out.to_string()
+}
+
+///|
+fn assemble_args(
+  toolchain : BackendToolchain,
+  asm_path : String,
+  object_path : String,
+) -> Array[String] {
+  [..toolchain.assemble_flags, asm_path, "-o", object_path]
+}
+
+///|
+fn link_args(
+  toolchain : BackendToolchain,
+  object_path : String,
+  executable_path : String,
+) -> Array[String] {
+  [..toolchain.link_flags, object_path, "-o", executable_path]
+}
+
+///|
 fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
   fn is_reg(op : String) {
     op == "eax" ||
@@ -181,15 +244,26 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
 
 ///|
 pub fn toolchain_plan(output : CompileOutput) -> ToolchainPlan? {
+  toolchain_plan_with(output, BackendToolchain::default())
+}
+
+///|
+pub fn toolchain_plan_with(
+  output : CompileOutput,
+  toolchain : BackendToolchain,
+) -> ToolchainPlan? {
   match (output.asm_path, output.object_path, output.executable_path) {
-    (Some(asm_path), Some(object_path), Some(executable_path)) =>
+    (Some(asm_path), Some(object_path), Some(executable_path)) => {
+      let assemble = assemble_args(toolchain, asm_path, object_path)
+      let link = link_args(toolchain, object_path, executable_path)
       Some({
         asm_path,
         object_path,
         executable_path,
-        assemble_cmd: "cc -c -fno-pie \"\{asm_path}\" -o \"\{object_path}\"",
-        link_cmd: "cc -no-pie \"\{object_path}\" -o \"\{executable_path}\"",
+        assemble_cmd: render_cmd(toolchain.assembler, assemble),
+        link_cmd: render_cmd(toolchain.linker, link),
       })
+    }
     _ => None
   }
 }
@@ -350,10 +424,20 @@ pub fn compile_text(
 }
 
 ///|
-pub fn emit_and_link(
+pub async fn emit_and_link(
   output : CompileOutput,
   out_dir : String,
   base_name : String,
+) -> BackendResult {
+  emit_and_link_with(output, out_dir, base_name, BackendToolchain::default())
+}
+
+///|
+pub async fn emit_and_link_with(
+  output : CompileOutput,
+  out_dir : String,
+  base_name : String,
+  toolchain : BackendToolchain,
 ) -> BackendResult {
   guard output.aasm_output is Some(aasm) else {
     return Err("missing AASM output; run compile pipeline first", output)
@@ -378,21 +462,32 @@ pub fn emit_and_link(
   }
   let after_emit = push_stage({ ..output, asm_path: Some(asm_path.0) }, EmitAsm)
 
-  // Stub assemble stage: persisted as text artifact for now.
-  @fs.write_string_to_file(object_path.0, "object(stub) from \{asm_path.0}\n") catch {
-    err => return Err("failed to assemble object: \{err}", after_emit)
+  let assemble_argv = assemble_args(toolchain, asm_path.0, object_path.0)
+  let (assemble_code, assemble_stdout, assemble_stderr) = @process.collect_output(
+    toolchain.assembler,
+    assemble_argv,
+  )
+  if assemble_code != 0 {
+    return Err(
+      "assembler failed (exit=\{assemble_code})\ncmd: \{render_cmd(toolchain.assembler, assemble_argv)}\nstdout:\n\{assemble_stdout.text()}\nstderr:\n\{assemble_stderr.text()}",
+      after_emit,
+    )
   }
   let after_assemble = push_stage(
     { ..after_emit, object_path: Some(object_path.0) },
     Assemble,
   )
 
-  // Stub link stage: persisted as text artifact for now.
-  @fs.write_string_to_file(
-    executable_path.0,
-    "executable(stub) linked from \{object_path}\n",
-  ) catch {
-    err => return Err("failed to link executable: \{err}", after_assemble)
+  let link_argv = link_args(toolchain, object_path.0, executable_path.0)
+  let (link_code, link_stdout, link_stderr) = @process.collect_output(
+    toolchain.linker,
+    link_argv,
+  )
+  if link_code != 0 {
+    return Err(
+      "linker failed (exit=\{link_code})\ncmd: \{render_cmd(toolchain.linker, link_argv)}\nstdout:\n\{link_stdout.text()}\nstderr:\n\{link_stderr.text()}",
+      after_assemble,
+    )
   }
   let after_link = push_stage(
     { ..after_assemble, executable_path: Some(executable_path.0) },

@@ -7,7 +7,7 @@ fn contains_stage(
 }
 
 ///|
-test "backend emit_and_link writes artifacts and stages" {
+async test "backend emit_and_link writes artifacts and stages" {
   let sink = @diag.DiagSink::new()
   let compiled = @driver.compile_text(
     0,

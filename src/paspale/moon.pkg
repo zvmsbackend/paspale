@@ -1,10 +1,13 @@
 import {
+  "moonbitlang/async",
   "moonbitlang/core/argparse",
   "sennenki/paspale/diag",
   "sennenki/paspale/driver",
   "moonbitlang/x/fs",
   "moonbitlang/x/path",
 }
+
+supported_targets = "+native"
 
 options(
   is_main: true,
