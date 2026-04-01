@@ -28,6 +28,7 @@ pub struct CompileOutput {
   unit : @ast.Spanned[@ast.CompilationUnit]?
   resolver : @semantic.Resolver?
   ir : @ir.ModuleIr
+  aasm_output : @x64.AsmData?
   stages : Array[CompileStage]
 }
 
@@ -62,10 +63,12 @@ fn run_first_pass(
 ///|
 fn run_second_pass(
   module_ir : @ir.ModuleIr,
+  unit : @ast.Spanned[@ast.CompilationUnit],
   resolver : @semantic.Resolver,
-) -> Unit {
+) -> @x64.AsmData {
   let _ = resolver
   module_ir.mark_stage(SecondPassed)
+  @x64.lower_compilation_unit(unit)
 }
 
 ///|
@@ -83,14 +86,28 @@ pub fn compile_tokens(
   let module_ir = @ir.ModuleIr::new()
   let stages = []
   if !should_continue(sink, options) {
-    return { tokens, unit: None, resolver: None, ir: module_ir, stages }
+    return {
+      tokens,
+      unit: None,
+      resolver: None,
+      ir: module_ir,
+      aasm_output: None,
+      stages,
+    }
   }
 
   mark_stage(stages, module_ir, Lex)
   let unit = @parser.parse_tokens(file_id, tokens, sink)
   mark_stage(stages, module_ir, Parse)
   if !should_continue(sink, options) {
-    return { tokens, unit: Some(unit), resolver: None, ir: module_ir, stages }
+    return {
+      tokens,
+      unit: Some(unit),
+      resolver: None,
+      ir: module_ir,
+      aasm_output: None,
+      stages,
+    }
   }
 
   let resolver = @semantic.analyze(unit, sink)
@@ -101,6 +118,7 @@ pub fn compile_tokens(
       unit: Some(unit),
       resolver: Some(resolver),
       ir: module_ir,
+      aasm_output: None,
       stages,
     }
   }
@@ -108,10 +126,17 @@ pub fn compile_tokens(
   run_first_pass(module_ir, unit, resolver)
   mark_stage(stages, module_ir, FirstPass)
 
-  run_second_pass(module_ir, resolver)
+  let lowered = run_second_pass(module_ir, unit, resolver)
   mark_stage(stages, module_ir, SecondPass)
 
-  { tokens, unit: Some(unit), resolver: Some(resolver), ir: module_ir, stages }
+  {
+    tokens,
+    unit: Some(unit),
+    resolver: Some(resolver),
+    ir: module_ir,
+    aasm_output: Some(lowered),
+    stages,
+  }
 }
 
 ///|

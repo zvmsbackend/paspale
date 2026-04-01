@@ -2,10 +2,12 @@
 package "sennenki/paspale/codegen/x64"
 
 import {
+  "sennenki/paspale/ast",
   "sennenki/paspale/diag",
 }
 
 // Values
+pub fn lower_compilation_unit(@ast.Spanned[@ast.CompilationUnit]) -> AsmData
 
 // Errors
 

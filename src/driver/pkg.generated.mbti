@@ -3,6 +3,7 @@ package "sennenki/paspale/driver"
 
 import {
   "sennenki/paspale/ast",
+  "sennenki/paspale/codegen/x64",
   "sennenki/paspale/diag",
   "sennenki/paspale/ir",
   "sennenki/paspale/lexer",
@@ -28,6 +29,7 @@ pub struct CompileOutput {
   unit : @ast.Spanned[@ast.CompilationUnit]?
   resolver : @semantic.Resolver?
   ir : @ir.ModuleIr
+  aasm_output : @x64.AsmData?
   stages : Array[CompileStage]
 }
 
