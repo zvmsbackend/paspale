@@ -7,6 +7,10 @@ import {
 }
 
 // Values
+pub fn allocate_physical(Array[LiveInst], Array[String]) -> PhysicalAllocation
+
+pub fn allocate_plan(Array[LiveInst], Int) -> AllocationPlan
+
 pub fn lower_compilation_unit(@ast.Spanned[@ast.CompilationUnit]) -> AsmData
 
 pub fn optimize_aasm(AsmData) -> (AsmData, OptimizeReport)
@@ -14,6 +18,11 @@ pub fn optimize_aasm(AsmData) -> (AsmData, OptimizeReport)
 // Errors
 
 // Types and methods
+pub struct AllocationPlan {
+  colors : Array[Int?]
+  adjacency : Array[Array[Int]]
+}
+
 pub struct AsmData {
   name : String
   mut procedures : Array[Tai]
@@ -40,11 +49,23 @@ pub(all) enum AsmListKind {
   DwarfInfo
 } derive(Eq, Show)
 
+pub struct LiveInst {
+  uses : Array[Int]
+  defs : Array[Int]
+}
+pub fn LiveInst::new(Array[Int], Array[Int]) -> Self
+
 pub struct OptimizeReport {
   mut removed_redundant_mov : Int
   mut removed_empty_comment : Int
 }
 pub fn OptimizeReport::new() -> Self
+
+pub struct PhysicalAllocation {
+  reg_of_vreg : Map[Int, String]
+  spill_offset_of_vreg : Map[Int, Int]
+  stack_size : Int
+}
 
 pub struct Tai {
   kind : TaiKind
