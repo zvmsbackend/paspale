@@ -69,3 +69,37 @@ test "lower break and continue to jmp" {
   assert_true(text.contains("jmp .L_while_loop"))
   assert_true(text.contains("jmp .L_while_end"))
 }
+
+///|
+test "lower case statement to cmp and branch labels" {
+  let sink = @diag.DiagSink::new()
+  let cu = @parser.parse_text(
+    0, "program P; var i: integer; begin case i of 1: i := 10; 2..3: i := 20; else i := 30; end; end.",
+    sink,
+  )
+  let out = @x64.lower_compilation_unit(cu)
+  let text = out.render()
+
+  assert_true(text.contains("cmp ebx, 1"))
+  assert_true(text.contains("je .L_case_branch"))
+  assert_true(text.contains("cmp ebx, 2"))
+  assert_true(text.contains("cmp ebx, 3"))
+  assert_true(text.contains("jle .L_case_branch"))
+  assert_true(text.contains(".L_case_else"))
+  assert_true(text.contains(".L_case_end"))
+}
+
+///|
+test "lower procedure declaration and call" {
+  let sink = @diag.DiagSink::new()
+  let cu = @parser.parse_text(
+    0, "program P; var x: integer; procedure Foo; begin x := 1; end; begin Foo; end.",
+    sink,
+  )
+  let out = @x64.lower_compilation_unit(cu)
+  let text = out.render()
+
+  assert_true(text.contains("jmp .L_main_body"))
+  assert_true(text.contains("Foo"))
+  assert_true(text.contains("call Foo"))
+}

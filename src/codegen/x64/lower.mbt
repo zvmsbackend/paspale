@@ -147,6 +147,15 @@ fn current_loop_label(stack : Array[String]) -> String? {
 }
 
 ///|
+fn has_callable_decl(d : @ast.Spanned[@ast.Decl]) -> Bool {
+  match d.node {
+    ProcDecl({ body: Some(_), .. }) => true
+    FuncDecl({ body: Some(_), .. }) => true
+    _ => false
+  }
+}
+
+///|
 fn emit_assign(
   out : AsmData,
   lhs : @ast.Spanned[@ast.Expr],
@@ -324,13 +333,86 @@ fn emit_stmt(
       continue_labels.pop() |> ignore
       break_labels.pop() |> ignore
     }
-    Case(_, branches, else_s) => {
-      out.emit(Tai::new(Comment, "; case", []).with_span(s.span))
-      for b in branches {
-        emit_stmt(out, b.node.body, break_labels, continue_labels)
-      }
-      if else_s is Some(es) {
-        emit_stmt(out, es, break_labels, continue_labels)
+    Case(selector, branches, else_s) => {
+      let end_label = fresh_label(out, ".L_case_end")
+      let else_label = fresh_label(out, ".L_case_else")
+      if lower_expr_to_eax(out, selector, s.span) {
+        out.emit(Tai::new(Instruction, "mov", ["ebx", "eax"]).with_span(s.span))
+        let branch_labels = []
+        for _ in branches {
+          branch_labels.push(fresh_label(out, ".L_case_branch"))
+        }
+        let mut idx = 0
+        for b in branches {
+          let target = branch_labels[idx]
+          idx = idx + 1
+          for l in b.node.labels {
+            match l.node {
+              Literal(Int(v)) => {
+                out.emit(
+                  Tai::new(Instruction, "cmp", ["ebx", v]).with_span(l.span),
+                )
+                out.emit(
+                  Tai::new(Instruction, "je", [target]).with_span(l.span),
+                )
+              }
+              Range(lo, hi) =>
+                if int_lit(lo) is Some(lo_v) && int_lit(hi) is Some(hi_v) {
+                  let next_label = fresh_label(out, ".L_case_next")
+                  out.emit(
+                    Tai::new(Instruction, "cmp", ["ebx", lo_v]).with_span(
+                      l.span,
+                    ),
+                  )
+                  out.emit(
+                    Tai::new(Instruction, "jl", [next_label]).with_span(l.span),
+                  )
+                  out.emit(
+                    Tai::new(Instruction, "cmp", ["ebx", hi_v]).with_span(
+                      l.span,
+                    ),
+                  )
+                  out.emit(
+                    Tai::new(Instruction, "jle", [target]).with_span(l.span),
+                  )
+                  out.emit(Tai::new(Label, next_label, []).with_span(l.span))
+                } else {
+                  out.emit(
+                    Tai::new(Comment, "; unsupported case range label", []).with_span(
+                      l.span,
+                    ),
+                  )
+                }
+              _ =>
+                out.emit(
+                  Tai::new(Comment, "; unsupported case label", []).with_span(
+                    l.span,
+                  ),
+                )
+            }
+          }
+        }
+        out.emit(Tai::new(Instruction, "jmp", [else_label]).with_span(s.span))
+        let mut idx = 0
+        for b in branches {
+          out.emit(Tai::new(Label, branch_labels[idx], []).with_span(b.span))
+          idx = idx + 1
+          emit_stmt(out, b.node.body, break_labels, continue_labels)
+          out.emit(Tai::new(Instruction, "jmp", [end_label]).with_span(b.span))
+        }
+        out.emit(Tai::new(Label, else_label, []).with_span(s.span))
+        if else_s is Some(es) {
+          emit_stmt(out, es, break_labels, continue_labels)
+        }
+        out.emit(Tai::new(Label, end_label, []).with_span(s.span))
+      } else {
+        out.emit(Tai::new(Comment, "; case", []).with_span(s.span))
+        for b in branches {
+          emit_stmt(out, b.node.body, break_labels, continue_labels)
+        }
+        if else_s is Some(es) {
+          emit_stmt(out, es, break_labels, continue_labels)
+        }
       }
     }
     With(_, body) => emit_stmt(out, body, break_labels, continue_labels)
@@ -398,6 +480,20 @@ fn emit_global_decl(out : AsmData, d : @ast.Spanned[@ast.Decl]) -> Unit {
         out.emit(Tai::new(Symbol, n, []).with_span(d.span))
         out.switch(Procedures)
       }
+    ProcDecl(proc_decl) =>
+      if proc_decl.body is Some(body) {
+        out.switch(Procedures)
+        out.emit(Tai::new(Label, proc_decl.name, []).with_span(d.span))
+        emit_block(out, body)
+        out.emit(Tai::new(Instruction, "ret", []).with_span(d.span))
+      }
+    FuncDecl(func_decl) =>
+      if func_decl.body is Some(body) {
+        out.switch(Procedures)
+        out.emit(Tai::new(Label, func_decl.name, []).with_span(d.span))
+        emit_block(out, body)
+        out.emit(Tai::new(Instruction, "ret", []).with_span(d.span))
+      }
     _ => ()
   }
 }
@@ -406,8 +502,21 @@ fn emit_global_decl(out : AsmData, d : @ast.Spanned[@ast.Decl]) -> Unit {
 fn emit_block(out : AsmData, block : @ast.Spanned[@ast.Block]) -> Unit {
   let break_labels = []
   let continue_labels = []
+  let mut has_callable = false
+  for d in block.node.decls {
+    if has_callable_decl(d) {
+      has_callable = true
+    }
+  }
+  let body_label = fresh_label(out, ".L_main_body")
+  if has_callable {
+    out.emit(Tai::new(Instruction, "jmp", [body_label]).with_span(block.span))
+  }
   for d in block.node.decls {
     emit_global_decl(out, d)
+  }
+  if has_callable {
+    out.emit(Tai::new(Label, body_label, []).with_span(block.span))
   }
   for s in block.node.stmts {
     emit_stmt(out, s, break_labels, continue_labels)
