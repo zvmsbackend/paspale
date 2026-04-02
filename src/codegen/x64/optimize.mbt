@@ -64,6 +64,71 @@ fn classify_live(item : Tai) -> LiveInst? {
 }
 
 ///|
+fn collect_cross_call_vregs(list : Array[Tai]) -> Map[Int, Bool] {
+  let first = {}
+  let last = {}
+  let call_positions = []
+  for i in 0..<list.length() {
+    let item = list[i]
+    if item.kind == Instruction && item.opcode == "call" {
+      call_positions.push(i)
+    }
+    for op in item.operands {
+      if parse_vreg(op) is Some(v) {
+        if !first.contains(v) {
+          first[v] = i
+        }
+        last[v] = i
+      }
+    }
+  }
+
+  let out = {}
+  for entry in first {
+    let v = entry.0
+    let start = entry.1
+    let end_ = last.get_or_default(v, start)
+    for cp in call_positions {
+      if start < cp && cp < end_ {
+        out[v] = true
+        break
+      }
+    }
+  }
+  out
+}
+
+///|
+fn apply_forced_spills(
+  alloc : PhysicalAllocation,
+  forced : Map[Int, Bool],
+) -> PhysicalAllocation {
+  let reg_of_vreg = {}
+  let spill_offset_of_vreg = {}
+  let mut next_spill = 8
+
+  for entry in alloc.spill_offset_of_vreg {
+    spill_offset_of_vreg[entry.0] = next_spill
+    next_spill = next_spill + 8
+  }
+
+  for entry in alloc.reg_of_vreg {
+    let v = entry.0
+    let r = entry.1
+    if forced.contains(v) {
+      if !spill_offset_of_vreg.contains(v) {
+        spill_offset_of_vreg[v] = next_spill
+        next_spill = next_spill + 8
+      }
+    } else {
+      reg_of_vreg[v] = r
+    }
+  }
+
+  { reg_of_vreg, spill_offset_of_vreg, stack_size: next_spill - 8 }
+}
+
+///|
 fn replace_vreg_operand(op : String, alloc : PhysicalAllocation) -> String {
   match parse_vreg(op) {
     Some(v) =>
@@ -202,7 +267,9 @@ fn rewrite_virtual_regs(
     return (list, [])
   }
 
-  let alloc = allocate_physical(insts, ["eax", "ebx", "ecx", "edx"])
+  let alloc0 = allocate_physical(insts, ["eax", "ebx", "ecx", "edx"])
+  let cross_call = collect_cross_call_vregs(list)
+  let alloc = apply_forced_spills(alloc0, cross_call)
   report.skipped_virtual_spills += alloc.spill_offset_of_vreg.length()
   report.allocated_virtual_regs += alloc.reg_of_vreg.length()
   let out = []

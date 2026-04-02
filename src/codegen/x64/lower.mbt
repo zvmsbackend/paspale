@@ -112,6 +112,7 @@ priv struct LowerCtx {
   mut next_vreg : Int
   in_callable : Bool
   exit_label : String?
+  return_slot_offset : Int?
   local_offsets : Map[String, Int]
   param_offsets : Map[String, Int]
 }
@@ -125,6 +126,7 @@ fn LowerCtx::new(out : AsmData) -> LowerCtx {
     next_vreg: 0,
     in_callable: false,
     exit_label: None,
+    return_slot_offset: None,
     local_offsets: {},
     param_offsets: {},
   }
@@ -134,6 +136,7 @@ fn LowerCtx::new(out : AsmData) -> LowerCtx {
 fn LowerCtx::for_callable(
   out : AsmData,
   exit_label : String,
+  return_slot_offset : Int?,
   local_offsets : Map[String, Int],
   param_offsets : Map[String, Int],
 ) -> LowerCtx {
@@ -144,6 +147,7 @@ fn LowerCtx::for_callable(
     next_vreg: 0,
     in_callable: true,
     exit_label: Some(exit_label),
+    return_slot_offset,
     local_offsets,
     param_offsets,
   }
@@ -724,6 +728,13 @@ fn LowerCtx::emit_stmt(self : LowerCtx, s : @ast.Spanned[@ast.Stmt]) -> Unit {
     Continue => self.emit_continue_stmt(s)
     Exit(Some(e)) => {
       ignore(self.lower_expr_to_eax(e, s.span))
+      if self.return_slot_offset is Some(ofs) {
+        self.out.emit(
+          Tai::new(Instruction, "mov", ["[rbp-\{ofs}]", "eax"]).with_span(
+            s.span,
+          ),
+        )
+      }
       match self.exit_label {
         Some(label) =>
           self.out.emit(Tai::new(Instruction, "jmp", [label]).with_span(s.span))
@@ -778,6 +789,7 @@ fn LowerCtx::emit_global_decl(
         let nested = LowerCtx::for_callable(
           self.out,
           exit_label,
+          None,
           offsets,
           param_offsets,
         )
@@ -794,7 +806,8 @@ fn LowerCtx::emit_global_decl(
         let exit_label = fresh_label(self.out, ".L_func_exit")
         let offsets = collect_local_offsets(body)
         let param_offsets = collect_param_offsets(func_decl.params)
-        let stack_size = local_stack_size(offsets)
+        let return_slot_offset = local_stack_size(offsets) + 8
+        let stack_size = return_slot_offset
         self.out.switch(Procedures)
         self.out.emit(Tai::new(Label, func_decl.name, []).with_span(d.span))
         self.out.emit(Tai::new(Instruction, "push", ["rbp"]).with_span(d.span))
@@ -811,11 +824,17 @@ fn LowerCtx::emit_global_decl(
         let nested = LowerCtx::for_callable(
           self.out,
           exit_label,
+          Some(return_slot_offset),
           offsets,
           param_offsets,
         )
         nested.emit_block(body)
         self.out.emit(Tai::new(Label, exit_label, []).with_span(d.span))
+        self.out.emit(
+          Tai::new(Instruction, "mov", ["eax", "[rbp-\{return_slot_offset}]"]).with_span(
+            d.span,
+          ),
+        )
         self.out.emit(
           Tai::new(Instruction, "mov", ["rsp", "rbp"]).with_span(d.span),
         )

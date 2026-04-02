@@ -115,9 +115,10 @@ test "lower callable uses stack locals and unified exit label" {
   let text = out.render()
 
   assert_true(text.contains("push rbp"))
-  assert_true(text.contains("sub rsp, 8"))
+  assert_true(text.contains("sub rsp, 16"))
   assert_true(text.contains("mov [rbp-8], v"))
   assert_true(text.contains("jmp .L_func_exit"))
+  assert_true(text.contains("mov eax, [rbp-16]"))
   assert_true(text.contains("mov rsp, rbp"))
   assert_true(text.contains("pop rbp"))
 }

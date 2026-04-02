@@ -48,3 +48,19 @@ test "optimize pass rewrites virtual regs with spill fallback" {
   assert_true(text.contains("[globals]"))
   assert_true(text.contains("__spill_v"))
 }
+
+///|
+test "optimize pass forces spill for vreg live across call" {
+  let input = @x64.AsmData::new("demo")
+  input.emit(@x64.Tai::new(Instruction, "mov", ["v0", "1"]))
+  input.emit(@x64.Tai::new(Instruction, "call", ["Foo"]))
+  input.emit(@x64.Tai::new(Instruction, "add", ["v0", "2"]))
+
+  let (optimized, report) = @x64.optimize_aasm(input)
+  let text = optimized.render()
+
+  assert_true(report.skipped_virtual_spills >= 1)
+  assert_true(!text.contains("mov v0"))
+  assert_true(!text.contains("add v0"))
+  assert_true(text.contains("[__spill_v0]"))
+}
