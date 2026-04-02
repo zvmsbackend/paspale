@@ -4,6 +4,8 @@ pub struct OptimizeReport {
   mut removed_empty_comment : Int
   mut allocated_virtual_regs : Int
   mut skipped_virtual_spills : Int
+  mut call_constraint_rehomes : Int
+  mut call_constraint_spills : Int
 }
 
 ///|
@@ -13,6 +15,8 @@ pub fn OptimizeReport::new() -> OptimizeReport {
     removed_empty_comment: 0,
     allocated_virtual_regs: 0,
     skipped_virtual_spills: 0,
+    call_constraint_rehomes: 0,
+    call_constraint_spills: 0,
   }
 }
 
@@ -120,11 +124,13 @@ fn allocate_with_call_constraints(
   plan : AllocationPlan,
   regs : Array[String],
   forced : Map[Int, Bool],
-) -> PhysicalAllocation {
+) -> (PhysicalAllocation, Int, Int) {
   let colors = []
   for c in plan.colors {
     colors.push(c)
   }
+  let mut rehomes = 0
+  let mut forced_spills = 0
 
   for entry in forced {
     let v = entry.0
@@ -159,7 +165,18 @@ fn allocate_with_call_constraints(
       }
     }
 
-    colors[v] = reassigned
+    match reassigned {
+      Some(c) => {
+        colors[v] = Some(c)
+        rehomes = rehomes + 1
+      }
+      None => {
+        if colors[v] is Some(_) {
+          forced_spills = forced_spills + 1
+        }
+        colors[v] = None
+      }
+    }
   }
 
   let reg_of_vreg = {}
@@ -176,7 +193,11 @@ fn allocate_with_call_constraints(
     }
   }
 
-  { reg_of_vreg, spill_offset_of_vreg, stack_size: next_spill - 8 }
+  (
+    { reg_of_vreg, spill_offset_of_vreg, stack_size: next_spill - 8 },
+    rehomes,
+    forced_spills,
+  )
 }
 
 ///|
@@ -321,9 +342,13 @@ fn rewrite_virtual_regs(
   let regs = allocatable_int_regs()
   let plan = allocate_plan(insts, regs.length())
   let cross_call = collect_cross_call_vregs(list)
-  let alloc = allocate_with_call_constraints(plan, regs, cross_call)
+  let (alloc, rehomes, forced_spills) = allocate_with_call_constraints(
+    plan, regs, cross_call,
+  )
   report.skipped_virtual_spills += alloc.spill_offset_of_vreg.length()
   report.allocated_virtual_regs += alloc.reg_of_vreg.length()
+  report.call_constraint_rehomes += rehomes
+  report.call_constraint_spills += forced_spills
   let out = []
   for item in list {
     rewrite_with_possible_spill(item, alloc, out)

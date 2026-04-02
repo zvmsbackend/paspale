@@ -84,6 +84,8 @@ test "optimize pass prefers callee-saved register across call" {
   let text = optimized.render()
 
   assert_true(report.skipped_virtual_spills == 0)
+  assert_true(report.call_constraint_rehomes >= 1)
+  assert_true(report.call_constraint_spills == 0)
   assert_true(text.contains("add ebx, 2"))
 }
 
@@ -110,5 +112,6 @@ test "optimize pass spills when cross-call vregs exceed callee-saved budget" {
   let text = optimized.render()
 
   assert_true(report.skipped_virtual_spills >= 1)
+  assert_true(report.call_constraint_spills >= 1)
   assert_true(text.contains("[__spill_v"))
 }

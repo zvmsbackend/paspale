@@ -60,6 +60,8 @@ pub struct OptimizeReport {
   mut removed_empty_comment : Int
   mut allocated_virtual_regs : Int
   mut skipped_virtual_spills : Int
+  mut call_constraint_rehomes : Int
+  mut call_constraint_spills : Int
 }
 pub fn OptimizeReport::new() -> Self
 
