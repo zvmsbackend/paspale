@@ -108,8 +108,7 @@ test "lower procedure declaration and call" {
 test "lower callable uses stack locals and unified exit label" {
   let sink = @diag.DiagSink::new()
   let cu = @parser.parse_text(
-    0,
-    "program P; function Foo: integer; var x: integer; begin x := 7; exit(x); end; begin end.",
+    0, "program P; function Foo: integer; var x: integer; begin x := 7; exit(x); end; begin end.",
     sink,
   )
   let out = @x64.lower_compilation_unit(cu)
@@ -121,4 +120,32 @@ test "lower callable uses stack locals and unified exit label" {
   assert_true(text.contains("jmp .L_func_exit"))
   assert_true(text.contains("mov rsp, rbp"))
   assert_true(text.contains("pop rbp"))
+}
+
+///|
+test "lower call passes args via stack and cleans caller stack" {
+  let sink = @diag.DiagSink::new()
+  let cu = @parser.parse_text(
+    0, "program P; procedure Foo(a, b: integer); begin end; begin Foo(1, 2); end.",
+    sink,
+  )
+  let out = @x64.lower_compilation_unit(cu)
+  let text = out.render()
+
+  assert_true(text.contains("push eax"))
+  assert_true(text.contains("call Foo"))
+  assert_true(text.contains("add rsp, 16"))
+}
+
+///|
+test "lower callable reads parameter from rbp positive offset" {
+  let sink = @diag.DiagSink::new()
+  let cu = @parser.parse_text(
+    0, "program P; procedure Foo(a: integer); var x: integer; begin x := a; end; begin Foo(1); end.",
+    sink,
+  )
+  let out = @x64.lower_compilation_unit(cu)
+  let text = out.render()
+
+  assert_true(text.contains("mov eax, [rbp+16]"))
 }

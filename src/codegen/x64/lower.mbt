@@ -45,6 +45,7 @@ fn cond_jcc(op : @ast.BinaryOp) -> String? {
   }
 }
 
+///|
 fn current_loop_label(stack : Array[String]) -> String? {
   if stack.length() == 0 {
     None
@@ -82,6 +83,23 @@ fn collect_local_offsets(block : @ast.Spanned[@ast.Block]) -> Map[String, Int] {
 }
 
 ///|
+fn collect_param_offsets(
+  params : Array[@ast.Spanned[@ast.ParamDecl]],
+) -> Map[String, Int] {
+  let offsets = {}
+  let mut next = 16
+  for p in params {
+    for name in p.node.names {
+      if !offsets.contains(name) {
+        offsets.set(name, next)
+        next = next + 8
+      }
+    }
+  }
+  offsets
+}
+
+///|
 fn local_stack_size(offsets : Map[String, Int]) -> Int {
   offsets.length() * 8
 }
@@ -94,6 +112,7 @@ priv struct LowerCtx {
   in_callable : Bool
   exit_label : String?
   local_offsets : Map[String, Int]
+  param_offsets : Map[String, Int]
 }
 
 ///|
@@ -105,6 +124,7 @@ fn LowerCtx::new(out : AsmData) -> LowerCtx {
     in_callable: false,
     exit_label: None,
     local_offsets: {},
+    param_offsets: {},
   }
 }
 
@@ -113,6 +133,7 @@ fn LowerCtx::for_callable(
   out : AsmData,
   exit_label : String,
   local_offsets : Map[String, Int],
+  param_offsets : Map[String, Int],
 ) -> LowerCtx {
   {
     out,
@@ -121,6 +142,7 @@ fn LowerCtx::for_callable(
     in_callable: true,
     exit_label: Some(exit_label),
     local_offsets,
+    param_offsets,
   }
 }
 
@@ -128,8 +150,47 @@ fn LowerCtx::for_callable(
 fn LowerCtx::var_addr(self : LowerCtx, name : String) -> String {
   match self.local_offsets.get(name) {
     Some(ofs) => "[rbp-\{ofs}]"
-    None => "[\{name}]"
+    None =>
+      match self.param_offsets.get(name) {
+        Some(ofs) => "[rbp+\{ofs}]"
+        None => "[\{name}]"
+      }
   }
+}
+
+///|
+fn LowerCtx::emit_named_call(
+  self : LowerCtx,
+  name : String,
+  args : Array[@ast.Spanned[@ast.Expr]],
+  span : @diag.Span,
+) -> Bool {
+  let mut pushed = 0
+  for i in 0..<args.length() {
+    let arg = args[args.length() - 1 - i]
+    if self.lower_expr_to_eax(arg, arg.span) {
+      self.out.emit(Tai::new(Instruction, "push", ["eax"]).with_span(arg.span))
+      pushed = pushed + 1
+    } else {
+      if pushed > 0 {
+        self.out.emit(
+          Tai::new(Instruction, "add", ["rsp", (pushed * 8).to_string()]).with_span(
+            span,
+          ),
+        )
+      }
+      return false
+    }
+  }
+  self.out.emit(Tai::new(Instruction, "call", [name]).with_span(span))
+  if pushed > 0 {
+    self.out.emit(
+      Tai::new(Instruction, "add", ["rsp", (pushed * 8).to_string()]).with_span(
+        span,
+      ),
+    )
+  }
+  true
 }
 
 ///|
@@ -145,26 +206,40 @@ fn LowerCtx::lower_expr_to_eax(
     }
     Name(name) => {
       self.out.emit(
-        Tai::new(Instruction, "mov", ["eax", self.var_addr(name)]).with_span(span),
+        Tai::new(Instruction, "mov", ["eax", self.var_addr(name)]).with_span(
+          span,
+        ),
       )
       true
     }
     Paren(inner) => self.lower_expr_to_eax(inner, span)
     Unary(Minus, rhs) =>
       if self.lower_expr_to_eax(rhs, span) {
-        self.out.emit(Tai::new(Instruction, "mov", ["ebx", "0"]).with_span(span))
-        self.out.emit(Tai::new(Instruction, "sub", ["ebx", "eax"]).with_span(span))
-        self.out.emit(Tai::new(Instruction, "mov", ["eax", "ebx"]).with_span(span))
+        self.out.emit(
+          Tai::new(Instruction, "mov", ["ebx", "0"]).with_span(span),
+        )
+        self.out.emit(
+          Tai::new(Instruction, "sub", ["ebx", "eax"]).with_span(span),
+        )
+        self.out.emit(
+          Tai::new(Instruction, "mov", ["eax", "ebx"]).with_span(span),
+        )
         true
       } else {
         false
       }
     Binary(Add, lhs, rhs) =>
       if self.lower_expr_to_eax(lhs, span) {
-        self.out.emit(Tai::new(Instruction, "mov", ["ebx", "eax"]).with_span(span))
+        self.out.emit(
+          Tai::new(Instruction, "mov", ["ebx", "eax"]).with_span(span),
+        )
         if self.lower_expr_to_eax(rhs, span) {
-          self.out.emit(Tai::new(Instruction, "add", ["ebx", "eax"]).with_span(span))
-          self.out.emit(Tai::new(Instruction, "mov", ["eax", "ebx"]).with_span(span))
+          self.out.emit(
+            Tai::new(Instruction, "add", ["ebx", "eax"]).with_span(span),
+          )
+          self.out.emit(
+            Tai::new(Instruction, "mov", ["eax", "ebx"]).with_span(span),
+          )
           true
         } else {
           false
@@ -174,16 +249,27 @@ fn LowerCtx::lower_expr_to_eax(
       }
     Binary(Sub, lhs, rhs) =>
       if self.lower_expr_to_eax(lhs, span) {
-        self.out.emit(Tai::new(Instruction, "mov", ["ebx", "eax"]).with_span(span))
+        self.out.emit(
+          Tai::new(Instruction, "mov", ["ebx", "eax"]).with_span(span),
+        )
         if self.lower_expr_to_eax(rhs, span) {
-          self.out.emit(Tai::new(Instruction, "sub", ["ebx", "eax"]).with_span(span))
-          self.out.emit(Tai::new(Instruction, "mov", ["eax", "ebx"]).with_span(span))
+          self.out.emit(
+            Tai::new(Instruction, "sub", ["ebx", "eax"]).with_span(span),
+          )
+          self.out.emit(
+            Tai::new(Instruction, "mov", ["eax", "ebx"]).with_span(span),
+          )
           true
         } else {
           false
         }
       } else {
         false
+      }
+    Call(callee, args) =>
+      match callee.node {
+        Name(name) => self.emit_named_call(name, args, span)
+        _ => false
       }
     _ => false
   }
@@ -201,11 +287,19 @@ fn LowerCtx::lower_cond_jump(
     Binary(op, lhs, rhs) =>
       if cond_jcc(op) is Some(jcc) {
         if self.lower_expr_to_eax(rhs, span) {
-          self.out.emit(Tai::new(Instruction, "mov", ["ebx", "eax"]).with_span(span))
+          self.out.emit(
+            Tai::new(Instruction, "mov", ["ebx", "eax"]).with_span(span),
+          )
           if self.lower_expr_to_eax(lhs, span) {
-            self.out.emit(Tai::new(Instruction, "cmp", ["eax", "ebx"]).with_span(span))
-            self.out.emit(Tai::new(Instruction, jcc, [true_label]).with_span(span))
-            self.out.emit(Tai::new(Instruction, "jmp", [false_label]).with_span(span))
+            self.out.emit(
+              Tai::new(Instruction, "cmp", ["eax", "ebx"]).with_span(span),
+            )
+            self.out.emit(
+              Tai::new(Instruction, jcc, [true_label]).with_span(span),
+            )
+            self.out.emit(
+              Tai::new(Instruction, "jmp", [false_label]).with_span(span),
+            )
             true
           } else {
             false
@@ -233,7 +327,9 @@ fn LowerCtx::emit_assign(
         Tai::new(Instruction, "mov", ["eax", "eax"]).with_span(span),
       )
       self.out.emit(
-        Tai::new(Instruction, "mov", [self.var_addr(dst), "eax"]).with_span(span),
+        Tai::new(Instruction, "mov", [self.var_addr(dst), "eax"]).with_span(
+          span,
+        ),
       )
     }
     (Name(dst), _) =>
@@ -243,7 +339,9 @@ fn LowerCtx::emit_assign(
         )
       } else if self.lower_expr_to_eax(rhs, span) {
         self.out.emit(
-          Tai::new(Instruction, "mov", [self.var_addr(dst), "eax"]).with_span(span),
+          Tai::new(Instruction, "mov", [self.var_addr(dst), "eax"]).with_span(
+            span,
+          ),
         )
       } else {
         self.out.emit(
@@ -553,10 +651,14 @@ fn LowerCtx::emit_stmt(self : LowerCtx, s : @ast.Spanned[@ast.Stmt]) -> Unit {
         self.emit_stmt(st)
       }
     Assign(lhs, rhs) => self.emit_assign(lhs, rhs, s.span)
-    Call(callee, _) =>
+    Call(callee, args) =>
       match callee.node {
         Name(name) =>
-          self.out.emit(Tai::new(Instruction, "call", [name]).with_span(s.span))
+          if !self.emit_named_call(name, args, s.span) {
+            self.out.emit(
+              Tai::new(Comment, "; call args unsupported", []).with_span(s.span),
+            )
+          }
         _ =>
           self.out.emit(
             Tai::new(Comment, "; call \{expr_text(callee)}", []).with_span(
@@ -600,14 +702,16 @@ fn LowerCtx::emit_stmt(self : LowerCtx, s : @ast.Spanned[@ast.Stmt]) -> Unit {
       match self.exit_label {
         Some(label) =>
           self.out.emit(Tai::new(Instruction, "jmp", [label]).with_span(s.span))
-        None => self.out.emit(Tai::new(Instruction, "ret", []).with_span(s.span))
+        None =>
+          self.out.emit(Tai::new(Instruction, "ret", []).with_span(s.span))
       }
     }
     Exit(None) =>
       match self.exit_label {
         Some(label) =>
           self.out.emit(Tai::new(Instruction, "jmp", [label]).with_span(s.span))
-        None => self.out.emit(Tai::new(Instruction, "ret", []).with_span(s.span))
+        None =>
+          self.out.emit(Tai::new(Instruction, "ret", []).with_span(s.span))
       }
     Empty | Error => ()
   }
@@ -631,6 +735,7 @@ fn LowerCtx::emit_global_decl(
       if proc_decl.body is Some(body) {
         let exit_label = fresh_label(self.out, ".L_proc_exit")
         let offsets = collect_local_offsets(body)
+        let param_offsets = collect_param_offsets(proc_decl.params)
         let stack_size = local_stack_size(offsets)
         self.out.switch(Procedures)
         self.out.emit(Tai::new(Label, proc_decl.name, []).with_span(d.span))
@@ -645,7 +750,12 @@ fn LowerCtx::emit_global_decl(
             ),
           )
         }
-        let nested = LowerCtx::for_callable(self.out, exit_label, offsets)
+        let nested = LowerCtx::for_callable(
+          self.out,
+          exit_label,
+          offsets,
+          param_offsets,
+        )
         nested.emit_block(body)
         self.out.emit(Tai::new(Label, exit_label, []).with_span(d.span))
         self.out.emit(
@@ -658,6 +768,7 @@ fn LowerCtx::emit_global_decl(
       if func_decl.body is Some(body) {
         let exit_label = fresh_label(self.out, ".L_func_exit")
         let offsets = collect_local_offsets(body)
+        let param_offsets = collect_param_offsets(func_decl.params)
         let stack_size = local_stack_size(offsets)
         self.out.switch(Procedures)
         self.out.emit(Tai::new(Label, func_decl.name, []).with_span(d.span))
@@ -672,7 +783,12 @@ fn LowerCtx::emit_global_decl(
             ),
           )
         }
-        let nested = LowerCtx::for_callable(self.out, exit_label, offsets)
+        let nested = LowerCtx::for_callable(
+          self.out,
+          exit_label,
+          offsets,
+          param_offsets,
+        )
         nested.emit_block(body)
         self.out.emit(Tai::new(Label, exit_label, []).with_span(d.span))
         self.out.emit(
