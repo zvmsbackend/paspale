@@ -99,7 +99,7 @@ pub fn AsmData::emit(self : AsmData, instr : Tai) -> Unit {
 ///|
 pub fn AsmData::render(self : AsmData) -> String {
   let out = StringBuilder::new()
-  let emit_list = fn(name : String, list : Array[Tai]) {
+  fn emit_list(name : String, list : Array[Tai]) {
     if list.length() > 0 {
       out.write_string("[")
       out.write_string(name)

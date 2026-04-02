@@ -1,9 +1,9 @@
 ///|
 test "aasm emits into selected list" {
-  let bundle = @x64.AsmData::new("demo")
-  bundle.emit(@x64.Tai::new(Label, "L0", []))
+  let bundle = AsmData::new("demo")
+  bundle.emit(Tai::new(Label, "L0", []))
   bundle.switch(Globals)
-  bundle.emit(@x64.Tai::new(Symbol, "_g", []))
+  bundle.emit(Tai::new(Symbol, "_g", []))
 
   assert_eq(bundle.procedures.length(), 1)
   assert_eq(bundle.globals.length(), 1)
@@ -12,8 +12,8 @@ test "aasm emits into selected list" {
 
 ///|
 test "aasm render prints non-empty sections" {
-  let bundle = @x64.AsmData::new("demo")
-  bundle.emit(@x64.Tai::new(Instruction, "mov", ["rax", "rbx"]))
+  let bundle = AsmData::new("demo")
+  bundle.emit(Tai::new(Instruction, "mov", ["rax", "rbx"]))
   let text = bundle.render()
 
   assert_true(text.contains("[procedures]"))

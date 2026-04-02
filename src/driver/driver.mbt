@@ -22,12 +22,12 @@ pub fn CompileOptions::new(stop_on_error : Bool) -> CompileOptions {
 }
 
 ///|
-pub fn CompileOptions::default() -> CompileOptions {
+pub impl Default for CompileOptions with default() {
   { stop_on_error: true }
 }
 
 ///|
-pub struct CompileOutput {
+pub(all) struct CompileOutput {
   tokens : Array[@lexer.SpannedToken]
   unit : @ast.Spanned[@ast.CompilationUnit]?
   resolver : @semantic.Resolver?
@@ -38,12 +38,6 @@ pub struct CompileOutput {
   object_path : String?
   executable_path : String?
   stages : Array[CompileStage]
-}
-
-///|
-pub(all) enum BackendResult {
-  Ok(CompileOutput)
-  Err(String, CompileOutput)
 }
 
 ///|
@@ -74,7 +68,7 @@ pub fn BackendToolchain::new(
 }
 
 ///|
-pub fn BackendToolchain::default() -> BackendToolchain {
+pub impl Default for BackendToolchain with default() {
   {
     assembler: "cc",
     linker: "cc",
@@ -172,7 +166,7 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
   if aasm.globals.length() > 0 {
     out.write_string(".data\n")
     for g in aasm.globals {
-      if g.kind == Symbol {
+      if g.kind is Symbol {
         out.write_string(g.opcode)
         out.write_string(": .long 0\n")
       }
@@ -227,27 +221,31 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
         out.write_string(label)
         out.write_string("\n")
       }
-      { kind: Instruction, opcode, operands: [op0], .. } =>
-        if (opcode == "push" || opcode == "pop") && is_reg(op0) {
-          out.write_string("  ")
-          out.write_string(opcode)
-          out.write_string(" ")
-          out.write_string(op0)
-          out.write_string("\n")
-        }
+      {
+        kind: Instruction,
+        opcode: "push"
+        | "pop" as opcode,
+        operands: [op0],
+        ..,
+      } if is_reg(op0) => {
+        out.write_string("  ")
+        out.write_string(opcode)
+        out.write_string(" ")
+        out.write_string(op0)
+        out.write_string("\n")
+      }
       { kind: Instruction, opcode: "call", operands: [callee], .. } => {
         out.write_string("  call ")
         out.write_string(callee)
         out.write_string("\n")
       }
-      { kind: Instruction, opcode, operands: [label], .. } =>
-        if is_jcc(opcode) {
-          out.write_string("  ")
-          out.write_string(opcode)
-          out.write_string(" ")
-          out.write_string(label)
-          out.write_string("\n")
-        }
+      { kind: Instruction, opcode, operands: [label], .. } if is_jcc(opcode) => {
+        out.write_string("  ")
+        out.write_string(opcode)
+        out.write_string(" ")
+        out.write_string(label)
+        out.write_string("\n")
+      }
       { kind: Label, opcode: label, .. } =>
         if label != "main" {
           out.write_string(label)
@@ -305,9 +303,7 @@ pub fn toolchain_plan_with(
 
 ///|
 fn push_stage(output : CompileOutput, stage : CompileStage) -> CompileOutput {
-  let stages = output.stages.copy()
-  stages.push(stage)
-  { ..output, stages, }
+  { ..output, stages: output.stages + [stage] }
 }
 
 ///|
@@ -334,7 +330,6 @@ fn run_first_pass(
   unit : @ast.Spanned[@ast.CompilationUnit],
   resolver : @semantic.Resolver,
 ) -> Unit {
-  let _ = resolver
   let report = @ir.run_first_pass(unit)
   module_ir.set_first_pass_report(report)
   module_ir.mark_stage(FirstPassed)
@@ -346,7 +341,6 @@ fn run_second_pass(
   unit : @ast.Spanned[@ast.CompilationUnit],
   resolver : @semantic.Resolver,
 ) -> @x64.AsmData {
-  let _ = resolver
   module_ir.mark_stage(SecondPassed)
   @x64.lower_compilation_unit(unit)
 }
@@ -459,11 +453,16 @@ pub fn compile_text(
 }
 
 ///|
+pub suberror BackendError {
+  BackendError(String, CompileOutput)
+}
+
+///|
 pub async fn emit_and_link(
   output : CompileOutput,
   out_dir : String,
   base_name : String,
-) -> BackendResult {
+) -> CompileOutput raise BackendError {
   emit_and_link_with(output, out_dir, base_name, BackendToolchain::default())
 }
 
@@ -473,9 +472,11 @@ pub async fn emit_and_link_with(
   out_dir : String,
   base_name : String,
   toolchain : BackendToolchain,
-) -> BackendResult {
+) -> CompileOutput raise BackendError {
   guard output.aasm_output is Some(aasm) else {
-    return Err("missing AASM output; run compile pipeline first", output)
+    raise BackendError(
+      "missing AASM output; run compile pipeline first", output,
+    )
   }
 
   let asm_path = @path.Path(out_dir).join("\{base_name}.s")
@@ -493,7 +494,7 @@ pub async fn emit_and_link_with(
   }
   let rendered = render_linkable_asm(unit_name, aasm)
   @fs.write_string_to_file(asm_path.0, rendered) catch {
-    err => return Err("failed to write asm file: \{err}", output)
+    err => raise BackendError("failed to write asm file: \{err}", output)
   }
   let after_emit = push_stage({ ..output, asm_path: Some(asm_path.0) }, EmitAsm)
 
@@ -501,10 +502,22 @@ pub async fn emit_and_link_with(
   let (assemble_code, assemble_stdout, assemble_stderr) = @process.collect_output(
     toolchain.assembler,
     assemble_argv,
-  )
+  ) catch {
+    err =>
+      raise BackendError(
+        "failed to spawn assembler process: \{err}",
+        after_emit,
+      )
+  }
   if assemble_code != 0 {
-    return Err(
-      "assembler failed (exit=\{assemble_code})\ncmd: \{render_cmd(toolchain.assembler, assemble_argv)}\nstdout:\n\{assemble_stdout.text()}\nstderr:\n\{assemble_stderr.text()}",
+    let stdout_text = assemble_stdout.text() catch {
+      _ => "<non-textual output>"
+    }
+    let stderr_text = assemble_stderr.text() catch {
+      _ => "<non-textual output>"
+    }
+    raise BackendError(
+      "assembler failed (exit=\{assemble_code})\ncmd: \{render_cmd(toolchain.assembler, assemble_argv)}\nstdout:\n\{stdout_text}\nstderr:\n\{stderr_text}",
       after_emit,
     )
   }
@@ -517,10 +530,18 @@ pub async fn emit_and_link_with(
   let (link_code, link_stdout, link_stderr) = @process.collect_output(
     toolchain.linker,
     link_argv,
-  )
+  ) catch {
+    err =>
+      raise BackendError(
+        "failed to spawn linker process: \{err}",
+        after_assemble,
+      )
+  }
   if link_code != 0 {
-    return Err(
-      "linker failed (exit=\{link_code})\ncmd: \{render_cmd(toolchain.linker, link_argv)}\nstdout:\n\{link_stdout.text()}\nstderr:\n\{link_stderr.text()}",
+    let stdout_text = link_stdout.text() catch { _ => "<non-textual output>" }
+    let stderr_text = link_stderr.text() catch { _ => "<non-textual output>" }
+    raise BackendError(
+      "linker failed (exit=\{link_code})\ncmd: \{render_cmd(toolchain.linker, link_argv)}\nstdout:\n\{stdout_text}\nstderr:\n\{stderr_text}",
       after_assemble,
     )
   }
@@ -529,5 +550,5 @@ pub async fn emit_and_link_with(
     Link,
   )
 
-  Ok(after_link)
+  after_link
 }

@@ -90,17 +90,12 @@ pub fn ModuleGraph::topo_order(self : ModuleGraph) -> Array[String] {
     }
   }
 
-  let queue = []
-  for k in self.keys {
-    let d = indegree.get_or_default(k, 0)
-    if d == 0 {
-      queue.push(k)
-    }
-  }
+  let queue = @queue.from_iter(
+    self.keys.iter().filter(k => indegree.get_or_default(k, 0) == 0),
+  )
 
   let ordered = []
-  for i = 0; i < queue.length(); i = i + 1 {
-    let curr = queue[i]
+  while queue.pop() is Some(curr) {
     ordered.push(self.nodes[curr].name)
     let outs = reverse_edges.get_or_default(curr, [])
     for next in outs {
@@ -117,16 +112,10 @@ pub fn ModuleGraph::topo_order(self : ModuleGraph) -> Array[String] {
   }
 
   // Cycle fallback: append unresolved nodes in stable name order.
-  let unresolved = []
-  for k in self.keys {
-    let d = indegree.get_or_default(k, 0)
-    if d > 0 {
-      unresolved.push(k)
-    }
-  }
+  let unresolved = indegree
+    .keys()
+    .filter(k => indegree.get_or_default(k, 0) > 0)
+    .collect()
   unresolved.sort()
-  for k in unresolved {
-    ordered.push(self.nodes[k].name)
-  }
-  ordered
+  unresolved.map(k => self.nodes[k].name)
 }

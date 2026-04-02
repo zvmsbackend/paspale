@@ -1,5 +1,5 @@
 ///|
-pub struct LiveInst {
+struct LiveInst {
   uses : Array[Int]
   defs : Array[Int]
 }
@@ -24,27 +24,18 @@ pub struct PhysicalAllocation {
 
 ///|
 fn add_unique(xs : Array[Int], x : Int) -> Unit {
-  if !xs.iter().any(v => v == x) {
+  if !xs.contains(x) {
     xs.push(x)
   }
 }
 
 ///|
 fn max_vreg(insts : Array[LiveInst]) -> Int {
-  let mut mx = -1
-  for inst in insts {
-    for u in inst.uses {
-      if u > mx {
-        mx = u
-      }
-    }
-    for d in inst.defs {
-      if d > mx {
-        mx = d
-      }
-    }
-  }
-  mx
+  insts
+  .iter()
+  .flat_map(inst => inst.uses.iter() + inst.defs.iter())
+  .maximum()
+  .unwrap()
 }
 
 ///|
@@ -57,14 +48,9 @@ fn build_interference(
   insts : Array[LiveInst],
   count : Int,
 ) -> Array[Array[Int]] {
-  let first = []
-  let last = []
-  for _ in 0..<count {
-    first.push(-1)
-    last.push(-1)
-  }
-  let mut idx = 0
-  for inst in insts {
+  let first = [-1].repeat(count)
+  let last = [-1].repeat(count)
+  for idx, inst in insts {
     for u in inst.uses {
       if first[u] == -1 {
         first[u] = idx
@@ -77,13 +63,9 @@ fn build_interference(
       }
       last[d] = idx
     }
-    idx = idx + 1
   }
 
-  let adj = []
-  for _ in 0..<count {
-    adj.push([])
-  }
+  let adj = [[]].repeat(count)
   for a in 0..<count {
     if first[a] == -1 {
       continue
@@ -110,12 +92,8 @@ pub fn allocate_plan(insts : Array[LiveInst], k : Int) -> AllocationPlan {
   let count = vreg_max + 1
   let adjacency = build_interference(insts, count)
 
-  let colors = []
-  let processed = []
-  for _ in 0..<count {
-    colors.push(None)
-    processed.push(false)
-  }
+  let colors = [None].repeat(count)
+  let processed = [false].repeat(count)
 
   for _ in 0..<count {
     let mut best_v = -1
@@ -134,24 +112,14 @@ pub fn allocate_plan(insts : Array[LiveInst], k : Int) -> AllocationPlan {
       break
     }
 
-    let used = []
-    for _ in 0..<k {
-      used.push(false)
-    }
+    let used = [false].repeat(k)
     for n in adjacency[best_v] {
-      match colors[n] {
-        Some(c) if c >= 0 && c < k => used[c] = true
-        _ => ()
+      if colors[n] is Some(c) && c >= 0 && c < k {
+        used[c] = true
       }
     }
 
-    let mut picked : Int? = None
-    for c in 0..<k {
-      if !used[c] {
-        picked = Some(c)
-        break
-      }
-    }
+    let picked = (0).until(k).find_first(c => !used[c])
     colors[best_v] = picked
     processed[best_v] = true
   }
@@ -169,8 +137,8 @@ pub fn allocate_physical(
   let spill_offset_of_vreg = {}
   let mut next_spill = 8
 
-  for v in 0..<plan.colors.length() {
-    match plan.colors[v] {
+  for v, color in plan.colors {
+    match color {
       Some(c) if c >= 0 && c < regs.length() => reg_of_vreg.set(v, regs[c])
       _ => {
         spill_offset_of_vreg.set(v, next_spill)

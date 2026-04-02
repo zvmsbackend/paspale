@@ -634,7 +634,7 @@ fn Resolver::int_bound_value(
   e : @ast.Spanned[@ast.Expr],
 ) -> Int? {
   match e.node {
-    @ast.Literal(@ast.Int(v)) =>
+    Literal(Int(v)) =>
       (v |> @string.parse_int |> Some) catch {
         _ => {
           self.sink.push_error(

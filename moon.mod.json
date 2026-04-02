@@ -14,5 +14,6 @@
     "language"
   ],
   "description": "A MoonBit implementation of the Pascal programming language.",
-  "source": "src"
+  "source": "src",
+  "preferred-target": "native"
 }

@@ -5,7 +5,8 @@ fn expr_text(e : @ast.Spanned[@ast.Expr]) -> String {
     Literal(Int(v)) => v
     Literal(Real(v)) => v
     Literal(String(v)) => "'\{v}'"
-    Literal(Bool(v)) => if v { "true" } else { "false" }
+    Literal(Bool(true)) => "true"
+    Literal(Bool(false)) => "false"
     Literal(Nil) => "nil"
     Unary(_, rhs) => expr_text(rhs)
     Binary(_, lhs, rhs) => "\{expr_text(lhs)} ? \{expr_text(rhs)}"
@@ -21,9 +22,10 @@ fn expr_text(e : @ast.Spanned[@ast.Expr]) -> String {
 
 ///|
 fn int_lit(e : @ast.Spanned[@ast.Expr]) -> String? {
-  match e.node {
-    Literal(Int(v)) => Some(v)
-    _ => None
+  if e.node is Literal(Int(v)) {
+    Some(v)
+  } else {
+    None
   }
 }
 
@@ -47,20 +49,12 @@ fn cond_jcc(op : @ast.BinaryOp) -> String? {
 
 ///|
 fn current_loop_label(stack : Array[String]) -> String? {
-  if stack.length() == 0 {
-    None
-  } else {
-    Some(stack[stack.length() - 1])
-  }
+  stack.last()
 }
 
 ///|
 fn has_callable_decl(d : @ast.Spanned[@ast.Decl]) -> Bool {
-  match d.node {
-    ProcDecl({ body: Some(_), .. }) => true
-    FuncDecl({ body: Some(_), .. }) => true
-    _ => false
-  }
+  d.node is (ProcDecl({ body: Some(_), .. }) | FuncDecl({ body: Some(_), .. }))
 }
 
 ///|
@@ -86,11 +80,10 @@ fn collect_local_offsets(block : @ast.Spanned[@ast.Block]) -> Map[String, Int] {
 fn collect_param_offsets(
   params : Array[@ast.Spanned[@ast.ParamDecl]],
 ) -> Map[String, Int] {
-  let regs = int_arg_regs()
   let names = flatten_param_names(params)
   let offsets = {}
   let mut next = 16
-  for i in regs.length()..<names.length() {
+  for i in int_arg_regs.length()..<names.length() {
     let name = names[i]
     if !offsets.contains(name) {
       offsets.set(name, next)
@@ -104,24 +97,14 @@ fn collect_param_offsets(
 fn flatten_param_names(
   params : Array[@ast.Spanned[@ast.ParamDecl]],
 ) -> Array[String] {
-  let names = []
-  for p in params {
-    for name in p.node.names {
-      names.push(name)
-    }
-  }
-  names
+  params.iter().flat_map(p => p.node.names.iter()).collect()
 }
 
 ///|
-fn int_arg_regs() -> Array[String] {
-  ["edi", "esi", "edx", "ecx", "r8d", "r9d"]
-}
+let int_arg_regs : Array[String] = ["edi", "esi", "edx", "ecx", "r8d", "r9d"]
 
 ///|
-fn callee_saved_regs() -> Array[String] {
-  ["rbx", "r12", "r13", "r14", "r15"]
-}
+let callee_saved_regs : Array[String] = ["rbx", "r12", "r13", "r14", "r15"]
 
 ///|
 fn local_stack_size(offsets : Map[String, Int]) -> Int {
@@ -203,7 +186,7 @@ fn LowerCtx::emit_named_call(
   args : Array[@ast.Spanned[@ast.Expr]],
   span : @diag.Span,
 ) -> Bool {
-  let arg_regs = int_arg_regs()
+  let arg_regs = int_arg_regs
   let arg_tmps = []
   for arg in args {
     if self.lower_expr_to_eax(arg, arg.span) {
@@ -217,11 +200,7 @@ fn LowerCtx::emit_named_call(
     }
   }
 
-  let reg_count = if arg_tmps.length() < arg_regs.length() {
-    arg_tmps.length()
-  } else {
-    arg_regs.length()
-  }
+  let reg_count = @cmp.minimum(arg_tmps.length(), arg_regs.length())
 
   let mut pushed = 0
   for i in reg_count..<arg_tmps.length() {
@@ -250,6 +229,26 @@ fn LowerCtx::emit_named_call(
 }
 
 ///|
+fn LowerCtx::emit_binary_to_eax(
+  self : LowerCtx,
+  span : @diag.Span,
+  lhs : @ast.Spanned[@ast.Expr],
+  rhs : @ast.Spanned[@ast.Expr],
+  op : String,
+) -> Bool {
+  guard self.lower_expr_to_eax(lhs, span) else { return false }
+  let tmp = self.fresh_vreg()
+  self.out.emit(Tai::new(Instruction, "mov", [tmp, "eax"]).with_span(span))
+  if self.lower_expr_to_eax(rhs, span) {
+    self.out.emit(Tai::new(Instruction, op, [tmp, "eax"]).with_span(span))
+    self.out.emit(Tai::new(Instruction, "mov", ["eax", tmp]).with_span(span))
+    true
+  } else {
+    false
+  }
+}
+
+///|
 fn LowerCtx::lower_expr_to_eax(
   self : LowerCtx,
   e : @ast.Spanned[@ast.Expr],
@@ -258,72 +257,37 @@ fn LowerCtx::lower_expr_to_eax(
   match e.node {
     Literal(Int(v)) => {
       let tmp = self.fresh_vreg()
-      self.out.emit(Tai::new(Instruction, "mov", [tmp, v]).with_span(span))
-      self.out.emit(Tai::new(Instruction, "mov", ["eax", tmp]).with_span(span))
+      self.out
+      ..emit(Tai::new(Instruction, "mov", [tmp, v]).with_span(span))
+      .emit(Tai::new(Instruction, "mov", ["eax", tmp]).with_span(span))
       true
     }
     Name(name) => {
       let tmp = self.fresh_vreg()
-      self.out.emit(
+      self.out
+      ..emit(
         Tai::new(Instruction, "mov", [tmp, self.var_addr(name)]).with_span(span),
       )
-      self.out.emit(Tai::new(Instruction, "mov", ["eax", tmp]).with_span(span))
+      .emit(Tai::new(Instruction, "mov", ["eax", tmp]).with_span(span))
       true
     }
     Paren(inner) => self.lower_expr_to_eax(inner, span)
     Unary(Minus, rhs) =>
       if self.lower_expr_to_eax(rhs, span) {
         let tmp = self.fresh_vreg()
-        self.out.emit(Tai::new(Instruction, "mov", [tmp, "0"]).with_span(span))
-        self.out.emit(
-          Tai::new(Instruction, "sub", [tmp, "eax"]).with_span(span),
-        )
-        self.out.emit(
-          Tai::new(Instruction, "mov", ["eax", tmp]).with_span(span),
-        )
+        self.out
+        ..emit(Tai::new(Instruction, "mov", [tmp, "0"]).with_span(span))
+        ..emit(Tai::new(Instruction, "sub", [tmp, "eax"]).with_span(span))
+        .emit(Tai::new(Instruction, "mov", ["eax", tmp]).with_span(span))
         true
       } else {
         false
       }
-    Binary(Add, lhs, rhs) =>
-      if self.lower_expr_to_eax(lhs, span) {
-        let tmp = self.fresh_vreg()
-        self.out.emit(
-          Tai::new(Instruction, "mov", [tmp, "eax"]).with_span(span),
-        )
-        if self.lower_expr_to_eax(rhs, span) {
-          self.out.emit(
-            Tai::new(Instruction, "add", [tmp, "eax"]).with_span(span),
-          )
-          self.out.emit(
-            Tai::new(Instruction, "mov", ["eax", tmp]).with_span(span),
-          )
-          true
-        } else {
-          false
-        }
-      } else {
-        false
-      }
-    Binary(Sub, lhs, rhs) =>
-      if self.lower_expr_to_eax(lhs, span) {
-        let tmp = self.fresh_vreg()
-        self.out.emit(
-          Tai::new(Instruction, "mov", [tmp, "eax"]).with_span(span),
-        )
-        if self.lower_expr_to_eax(rhs, span) {
-          self.out.emit(
-            Tai::new(Instruction, "sub", [tmp, "eax"]).with_span(span),
-          )
-          self.out.emit(
-            Tai::new(Instruction, "mov", ["eax", tmp]).with_span(span),
-          )
-          true
-        } else {
-          false
-        }
-      } else {
-        false
+    Binary(op, lhs, rhs) =>
+      match op {
+        Add => self.emit_binary_to_eax(span, lhs, rhs, "add")
+        Sub => self.emit_binary_to_eax(span, lhs, rhs, "sub")
+        _ => false
       }
     Call(callee, args) =>
       match callee.node {
@@ -342,35 +306,19 @@ fn LowerCtx::lower_cond_jump(
   false_label : String,
   span : @diag.Span,
 ) -> Bool {
-  match cond.node {
-    Binary(op, lhs, rhs) =>
-      if cond_jcc(op) is Some(jcc) {
-        if self.lower_expr_to_eax(rhs, span) {
-          let tmp = self.fresh_vreg()
-          self.out.emit(
-            Tai::new(Instruction, "mov", [tmp, "eax"]).with_span(span),
-          )
-          if self.lower_expr_to_eax(lhs, span) {
-            self.out.emit(
-              Tai::new(Instruction, "cmp", ["eax", tmp]).with_span(span),
-            )
-            self.out.emit(
-              Tai::new(Instruction, jcc, [true_label]).with_span(span),
-            )
-            self.out.emit(
-              Tai::new(Instruction, "jmp", [false_label]).with_span(span),
-            )
-            true
-          } else {
-            false
-          }
-        } else {
-          false
-        }
-      } else {
-        false
-      }
-    _ => false
+  guard cond.node is Binary(op, lhs, rhs) else { return false }
+  guard cond_jcc(op) is Some(jcc) else { return false }
+  guard self.lower_expr_to_eax(rhs, span) else { return false }
+  let tmp = self.fresh_vreg()
+  self.out.emit(Tai::new(Instruction, "mov", [tmp, "eax"]).with_span(span))
+  if self.lower_expr_to_eax(lhs, span) {
+    self.out
+    ..emit(Tai::new(Instruction, "cmp", ["eax", tmp]).with_span(span))
+    ..emit(Tai::new(Instruction, jcc, [true_label]).with_span(span))
+    .emit(Tai::new(Instruction, "jmp", [false_label]).with_span(span))
+    true
+  } else {
+    false
   }
 }
 
@@ -386,18 +334,18 @@ fn LowerCtx::emit_assign(
     (Name(dst), _) =>
       if int_lit(rhs) is Some(v) {
         let tmp = self.fresh_vreg()
-        self.out.emit(Tai::new(Instruction, "mov", [tmp, v]).with_span(span))
-        self.out.emit(
+        self.out
+        ..emit(Tai::new(Instruction, "mov", [tmp, v]).with_span(span))
+        .emit(
           Tai::new(Instruction, "mov", [self.var_addr(dst), tmp]).with_span(
             span,
           ),
         )
       } else if self.lower_expr_to_eax(rhs, span) {
         let tmp = self.fresh_vreg()
-        self.out.emit(
-          Tai::new(Instruction, "mov", [tmp, "eax"]).with_span(span),
-        )
-        self.out.emit(
+        self.out
+        ..emit(Tai::new(Instruction, "mov", [tmp, "eax"]).with_span(span))
+        .emit(
           Tai::new(Instruction, "mov", [self.var_addr(dst), tmp]).with_span(
             span,
           ),
@@ -432,8 +380,9 @@ fn LowerCtx::emit_if_stmt(
   if self.lower_cond_jump(cond, then_label, else_label, s.span) {
     self.out.emit(Tai::new(Label, then_label, []).with_span(s.span))
     self.emit_stmt(then_s)
-    self.out.emit(Tai::new(Instruction, "jmp", [end_label]).with_span(s.span))
-    self.out.emit(Tai::new(Label, else_label, []).with_span(s.span))
+    self.out
+    ..emit(Tai::new(Instruction, "jmp", [end_label]).with_span(s.span))
+    .emit(Tai::new(Label, else_label, []).with_span(s.span))
     if else_s is Some(es) {
       self.emit_stmt(es)
     }
@@ -463,8 +412,9 @@ fn LowerCtx::emit_while_stmt(
   if self.lower_cond_jump(cond, body_label, end_label, s.span) {
     self.out.emit(Tai::new(Label, body_label, []).with_span(s.span))
     self.emit_stmt(body)
-    self.out.emit(Tai::new(Instruction, "jmp", [loop_label]).with_span(s.span))
-    self.out.emit(Tai::new(Label, end_label, []).with_span(s.span))
+    self.out
+    ..emit(Tai::new(Instruction, "jmp", [loop_label]).with_span(s.span))
+    .emit(Tai::new(Label, end_label, []).with_span(s.span))
   } else {
     self.out.emit(Tai::new(Comment, "; while", []).with_span(s.span))
     self.emit_stmt(body)
@@ -582,14 +532,11 @@ fn LowerCtx::emit_case_stmt(
     self.out.emit(
       Tai::new(Instruction, "mov", [selector_tmp, "eax"]).with_span(s.span),
     )
-    let branch_labels = []
-    for _ in branches {
-      branch_labels.push(fresh_label(self.out, ".L_case_branch"))
-    }
-    let mut idx = 0
-    for b in branches {
+    let branch_labels = branches.map(_ => {
+      fresh_label(self.out, ".L_case_branch")
+    })
+    for idx, b in branches {
       let target = branch_labels[idx]
-      idx = idx + 1
       for l in b.node.labels {
         match l.node {
           Literal(Int(v)) => {
@@ -603,23 +550,22 @@ fn LowerCtx::emit_case_stmt(
           Range(lo, hi) =>
             if int_lit(lo) is Some(lo_v) && int_lit(hi) is Some(hi_v) {
               let next_label = fresh_label(self.out, ".L_case_next")
-              self.out.emit(
+              self.out
+              ..emit(
                 Tai::new(Instruction, "cmp", [selector_tmp, lo_v]).with_span(
                   l.span,
                 ),
               )
-              self.out.emit(
+              ..emit(
                 Tai::new(Instruction, "jl", [next_label]).with_span(l.span),
               )
-              self.out.emit(
+              ..emit(
                 Tai::new(Instruction, "cmp", [selector_tmp, hi_v]).with_span(
                   l.span,
                 ),
               )
-              self.out.emit(
-                Tai::new(Instruction, "jle", [target]).with_span(l.span),
-              )
-              self.out.emit(Tai::new(Label, next_label, []).with_span(l.span))
+              ..emit(Tai::new(Instruction, "jle", [target]).with_span(l.span))
+              .emit(Tai::new(Label, next_label, []).with_span(l.span))
             } else {
               self.out.emit(
                 Tai::new(Comment, "; unsupported case range label", []).with_span(
@@ -637,10 +583,8 @@ fn LowerCtx::emit_case_stmt(
       }
     }
     self.out.emit(Tai::new(Instruction, "jmp", [else_label]).with_span(s.span))
-    let mut idx = 0
-    for b in branches {
+    for idx, b in branches {
       self.out.emit(Tai::new(Label, branch_labels[idx], []).with_span(b.span))
-      idx = idx + 1
       self.emit_stmt(b.node.body)
       self.out.emit(Tai::new(Instruction, "jmp", [end_label]).with_span(b.span))
     }
@@ -798,9 +742,10 @@ fn LowerCtx::emit_global_decl(
     VarDecl(names, _, _) =>
       if !self.in_callable {
         for n in names {
-          self.out.switch(Globals)
-          self.out.emit(Tai::new(Symbol, n, []).with_span(d.span))
-          self.out.switch(Procedures)
+          self.out
+          ..switch(Globals)
+          ..emit(Tai::new(Symbol, n, []).with_span(d.span))
+          .switch(Procedures)
         }
       }
     ProcDecl(proc_decl) =>
@@ -808,16 +753,11 @@ fn LowerCtx::emit_global_decl(
         let exit_label = fresh_label(self.out, ".L_proc_exit")
         let offsets = collect_local_offsets(body)
         let all_params = flatten_param_names(proc_decl.params)
-        let arg_regs = int_arg_regs()
-        let reg_param_count = if all_params.length() < arg_regs.length() {
-          all_params.length()
-        } else {
-          arg_regs.length()
-        }
-        let local_and_reg_params = {}
-        for entry in offsets {
-          local_and_reg_params[entry.0] = entry.1
-        }
+        let reg_param_count = @cmp.minimum(
+          all_params.length(),
+          int_arg_regs.length(),
+        )
+        let local_and_reg_params = offsets.copy()
         let mut next_local = local_stack_size(offsets) + 8
         for i in 0..<reg_param_count {
           let pname = all_params[i]
@@ -828,12 +768,11 @@ fn LowerCtx::emit_global_decl(
         }
         let param_offsets = collect_param_offsets(proc_decl.params)
         let stack_size = next_local - 8
-        self.out.switch(Procedures)
-        self.out.emit(Tai::new(Label, proc_decl.name, []).with_span(d.span))
-        self.out.emit(Tai::new(Instruction, "push", ["rbp"]).with_span(d.span))
-        self.out.emit(
-          Tai::new(Instruction, "mov", ["rbp", "rsp"]).with_span(d.span),
-        )
+        self.out
+        ..switch(Procedures)
+        ..emit(Tai::new(Label, proc_decl.name, []).with_span(d.span))
+        ..emit(Tai::new(Instruction, "push", ["rbp"]).with_span(d.span))
+        .emit(Tai::new(Instruction, "mov", ["rbp", "rsp"]).with_span(d.span))
         if stack_size > 0 {
           self.out.emit(
             Tai::new(Instruction, "sub", ["rsp", stack_size.to_string()]).with_span(
@@ -841,15 +780,14 @@ fn LowerCtx::emit_global_decl(
             ),
           )
         }
-        let saved = callee_saved_regs()
-        for r in saved {
+        for r in callee_saved_regs {
           self.out.emit(Tai::new(Instruction, "push", [r]).with_span(d.span))
         }
         for i in 0..<reg_param_count {
           let pname = all_params[i]
           if local_and_reg_params.get(pname) is Some(ofs) {
             self.out.emit(
-              Tai::new(Instruction, "mov", ["[rbp-\{ofs}]", arg_regs[i]]).with_span(
+              Tai::new(Instruction, "mov", ["[rbp-\{ofs}]", int_arg_regs[i]]).with_span(
                 d.span,
               ),
             )
@@ -864,12 +802,8 @@ fn LowerCtx::emit_global_decl(
         )
         nested.emit_block(body)
         self.out.emit(Tai::new(Label, exit_label, []).with_span(d.span))
-        for i in 0..<saved.length() {
-          self.out.emit(
-            Tai::new(Instruction, "pop", [saved[saved.length() - 1 - i]]).with_span(
-              d.span,
-            ),
-          )
+        for saved in callee_saved_regs.rev_iter() {
+          self.out.emit(Tai::new(Instruction, "pop", [saved]).with_span(d.span))
         }
         self.out.emit(
           Tai::new(Instruction, "mov", ["rsp", "rbp"]).with_span(d.span),
@@ -882,16 +816,11 @@ fn LowerCtx::emit_global_decl(
         let exit_label = fresh_label(self.out, ".L_func_exit")
         let offsets = collect_local_offsets(body)
         let all_params = flatten_param_names(func_decl.params)
-        let arg_regs = int_arg_regs()
-        let reg_param_count = if all_params.length() < arg_regs.length() {
-          all_params.length()
-        } else {
-          arg_regs.length()
-        }
-        let local_and_reg_params = {}
-        for entry in offsets {
-          local_and_reg_params[entry.0] = entry.1
-        }
+        let reg_param_count = @cmp.minimum(
+          all_params.length(),
+          int_arg_regs.length(),
+        )
+        let local_and_reg_params = offsets.copy()
         let mut next_local = local_stack_size(offsets) + 8
         for i in 0..<reg_param_count {
           let pname = all_params[i]
@@ -916,7 +845,7 @@ fn LowerCtx::emit_global_decl(
             ),
           )
         }
-        let saved = callee_saved_regs()
+        let saved = callee_saved_regs
         for r in saved {
           self.out.emit(Tai::new(Instruction, "push", [r]).with_span(d.span))
         }
@@ -924,7 +853,7 @@ fn LowerCtx::emit_global_decl(
           let pname = all_params[i]
           if local_and_reg_params.get(pname) is Some(ofs) {
             self.out.emit(
-              Tai::new(Instruction, "mov", ["[rbp-\{ofs}]", arg_regs[i]]).with_span(
+              Tai::new(Instruction, "mov", ["[rbp-\{ofs}]", int_arg_regs[i]]).with_span(
                 d.span,
               ),
             )
@@ -939,23 +868,18 @@ fn LowerCtx::emit_global_decl(
         )
         nested.emit_block(body)
         self.out.emit(Tai::new(Label, exit_label, []).with_span(d.span))
-        for i in 0..<saved.length() {
-          self.out.emit(
-            Tai::new(Instruction, "pop", [saved[saved.length() - 1 - i]]).with_span(
-              d.span,
-            ),
-          )
+        for saved in callee_saved_regs.rev_iter() {
+          self.out.emit(Tai::new(Instruction, "pop", [saved]).with_span(d.span))
         }
-        self.out.emit(
+        self.out
+        ..emit(
           Tai::new(Instruction, "mov", ["eax", "[rbp-\{return_slot_offset}]"]).with_span(
             d.span,
           ),
         )
-        self.out.emit(
-          Tai::new(Instruction, "mov", ["rsp", "rbp"]).with_span(d.span),
-        )
-        self.out.emit(Tai::new(Instruction, "pop", ["rbp"]).with_span(d.span))
-        self.out.emit(Tai::new(Instruction, "ret", []).with_span(d.span))
+        ..emit(Tai::new(Instruction, "mov", ["rsp", "rbp"]).with_span(d.span))
+        ..emit(Tai::new(Instruction, "pop", ["rbp"]).with_span(d.span))
+        .emit(Tai::new(Instruction, "ret", []).with_span(d.span))
       }
     _ => ()
   }
@@ -966,12 +890,8 @@ fn LowerCtx::emit_block(
   self : LowerCtx,
   block : @ast.Spanned[@ast.Block],
 ) -> Unit {
-  let mut has_callable = false
-  for d in block.node.decls {
-    if !self.in_callable && has_callable_decl(d) {
-      has_callable = true
-    }
-  }
+  let has_callable = !self.in_callable &&
+    block.node.decls.iter().any(has_callable_decl)
   let body_label = fresh_label(self.out, ".L_main_body")
   if !self.in_callable && has_callable {
     self.out.emit(
@@ -1003,7 +923,7 @@ pub fn lower_compilation_unit(
   out.switch(Procedures)
   out.emit(Tai::new(Section, ".text", []).with_span(cu.span))
   out.emit(Tai::new(Label, "main", []).with_span(cu.span))
-  let main_saved = callee_saved_regs()
+  let main_saved = callee_saved_regs
   for r in main_saved {
     out.emit(Tai::new(Instruction, "push", [r]).with_span(cu.span))
   }
@@ -1032,12 +952,8 @@ pub fn lower_compilation_unit(
     }
   }
 
-  for i in 0..<main_saved.length() {
-    out.emit(
-      Tai::new(Instruction, "pop", [main_saved[main_saved.length() - 1 - i]]).with_span(
-        cu.span,
-      ),
-    )
+  for saved in main_saved.rev_iter() {
+    out.emit(Tai::new(Instruction, "pop", [saved]).with_span(cu.span))
   }
   out.emit(Tai::new(Instruction, "ret", []).with_span(cu.span))
 

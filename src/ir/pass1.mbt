@@ -1,8 +1,6 @@
 ///|
 fn parse_int_lit(v : String) -> Int? {
-  (v |> @string.parse_int |> Some) catch {
-    _ => None
-  }
+  (try? @string.parse_int(v)).to_option()
 }
 
 ///|
@@ -180,8 +178,8 @@ fn visit_decl(d : @ast.Spanned[@ast.Decl], report : FirstPassReport) -> Unit {
     ConstDecl(_, expr) => visit_expr(expr, report)
     VarDecl(_, _, Some(init)) => visit_expr(init, report)
     VarDecl(_, _, None) => ()
-    ProcDecl(pd) => if pd.body is Some(b) { visit_block(b, report) }
-    FuncDecl(fd) => if fd.body is Some(b) { visit_block(b, report) }
+    ProcDecl({ body: Some(b), .. }) => visit_block(b, report)
+    FuncDecl({ body: Some(b), .. }) => visit_block(b, report)
     _ => ()
   }
 }

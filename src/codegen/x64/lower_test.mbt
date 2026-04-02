@@ -2,7 +2,7 @@
 test "lower compilation unit emits call and mov" {
   let sink = @diag.DiagSink::new()
   let cu = @parser.parse_text(0, "program P; begin x := 1; Foo; end.", sink)
-  let out = @x64.lower_compilation_unit(cu)
+  let out = lower_compilation_unit(cu)
   let text = out.render()
 
   assert_true(text.contains("[procedures]"))
@@ -17,7 +17,7 @@ test "lower arithmetic literal expression to add/sub" {
   let cu = @parser.parse_text(
     0, "program P; begin x := 1 + 2; y := 5 - 3; end.", sink,
   )
-  let out = @x64.lower_compilation_unit(cu)
+  let out = lower_compilation_unit(cu)
   let text = out.render()
 
   assert_true(text.contains("add v"))
@@ -31,7 +31,7 @@ test "lower conditional flow to cmp and jumps" {
     0, "program P; begin if 1 < 2 then x := 1 else x := 2; while 1 < 2 do x := 3; end.",
     sink,
   )
-  let out = @x64.lower_compilation_unit(cu)
+  let out = lower_compilation_unit(cu)
   let text = out.render()
 
   assert_true(text.contains("cmp eax, v"))
@@ -46,7 +46,7 @@ test "lower repeat and for statements to loop labels" {
     0, "program P; var i: integer; begin repeat i := i + 1; until i > 2; for i := 1 to 3 do i := i + 1; end.",
     sink,
   )
-  let out = @x64.lower_compilation_unit(cu)
+  let out = lower_compilation_unit(cu)
   let text = out.render()
 
   assert_true(text.contains(".L_repeat_loop"))
@@ -63,7 +63,7 @@ test "lower break and continue to jmp" {
     0, "program P; var i: integer; begin while i < 10 do begin continue; break; end; end.",
     sink,
   )
-  let out = @x64.lower_compilation_unit(cu)
+  let out = lower_compilation_unit(cu)
   let text = out.render()
 
   assert_true(text.contains("jmp .L_while_loop"))
@@ -77,7 +77,7 @@ test "lower case statement to cmp and branch labels" {
     0, "program P; var i: integer; begin case i of 1: i := 10; 2..3: i := 20; else i := 30; end; end.",
     sink,
   )
-  let out = @x64.lower_compilation_unit(cu)
+  let out = lower_compilation_unit(cu)
   let text = out.render()
 
   assert_true(text.contains("cmp v"))
@@ -96,7 +96,7 @@ test "lower procedure declaration and call" {
     0, "program P; var x: integer; procedure Foo; begin x := 1; end; begin Foo; end.",
     sink,
   )
-  let out = @x64.lower_compilation_unit(cu)
+  let out = lower_compilation_unit(cu)
   let text = out.render()
 
   assert_true(text.contains("jmp .L_main_body"))
@@ -111,7 +111,7 @@ test "lower callable uses stack locals and unified exit label" {
     0, "program P; function Foo: integer; var x: integer; begin x := 7; exit(x); end; begin end.",
     sink,
   )
-  let out = @x64.lower_compilation_unit(cu)
+  let out = lower_compilation_unit(cu)
   let text = out.render()
 
   assert_true(text.contains("push rbp"))
@@ -130,7 +130,7 @@ test "lower call passes args via stack and cleans caller stack" {
     0, "program P; procedure Foo(a, b: integer); begin end; begin Foo(1, 2); end.",
     sink,
   )
-  let out = @x64.lower_compilation_unit(cu)
+  let out = lower_compilation_unit(cu)
   let text = out.render()
 
   assert_true(text.contains("mov edi, v"))
@@ -146,7 +146,7 @@ test "lower callable reads parameter from rbp positive offset" {
     0, "program P; procedure Foo(a: integer); var x: integer; begin x := a; end; begin Foo(1); end.",
     sink,
   )
-  let out = @x64.lower_compilation_unit(cu)
+  let out = lower_compilation_unit(cu)
   let text = out.render()
 
   assert_true(text.contains("[rbp-16]"))
@@ -159,7 +159,7 @@ test "lower call spills extra args to stack after register args" {
     0, "program P; procedure Foo(a,b,c,d,e,f,g: integer); begin end; begin Foo(1,2,3,4,5,6,7); end.",
     sink,
   )
-  let out = @x64.lower_compilation_unit(cu)
+  let out = lower_compilation_unit(cu)
   let text = out.render()
 
   assert_true(text.contains("mov edi, v"))

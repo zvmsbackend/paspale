@@ -1,9 +1,6 @@
 ///|
 fn index_of(xs : Array[String], target : String) -> Int {
-  match xs.search_by(x => x == target) {
-    Some(i) => i
-    None => -1
-  }
+  xs.search(target).unwrap_or(-1)
 }
 
 ///|
@@ -19,7 +16,7 @@ test "module graph builds direct dependencies" {
     2, "unit C; interface implementation begin end.", sink,
   )
 
-  let g = @driver.collect_module_graph([a, b, c])
+  let g = collect_module_graph([a, b, c])
   let deps = g.direct_deps("A")
 
   assert_eq(deps.length(), 1)
@@ -39,7 +36,7 @@ test "module graph topo order follows uses relation" {
     2, "unit C; interface implementation begin end.", sink,
   )
 
-  let g = @driver.collect_module_graph([a, b, c])
+  let g = collect_module_graph([a, b, c])
   let order = g.topo_order()
 
   let ia = index_of(order, "A")
@@ -62,7 +59,7 @@ test "module graph cycle fallback remains total" {
     1, "unit B; interface uses A; implementation begin end.", sink,
   )
 
-  let g = @driver.collect_module_graph([a, b])
+  let g = collect_module_graph([a, b])
   let order = g.topo_order()
 
   assert_eq(order.length(), 2)

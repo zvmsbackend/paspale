@@ -1,6 +1,6 @@
 ///|
 test "module ir tracks stage transitions" {
-  let m = @ir.ModuleIr::new()
+  let m = ModuleIr::new()
   assert_false(m.reached(Parsed))
   m.mark_stage(Parsed)
   m.mark_stage(Resolved)
@@ -13,7 +13,7 @@ test "module ir tracks stage transitions" {
 ///|
 test "proc info has stable defaults" {
   let span = @diag.Span::new(0, 1, 2)
-  let p = @ir.ProcInfo::new(7, span, span)
+  let p = ProcInfo::new(7, span, span)
 
   assert_eq(p.proc_sym, 7)
   assert_true(p.parent_proc is None)
@@ -23,7 +23,7 @@ test "proc info has stable defaults" {
 
 ///|
 test "opt info starts with empty sets" {
-  let opt = @ir.OptInfo::new(3)
+  let opt = OptInfo::new(3)
 
   assert_eq(opt.index, 3)
   assert_eq(opt.def_set.length(), 0)
@@ -38,7 +38,7 @@ test "first pass reports foldable integer expressions" {
   let cu = @parser.parse_text(
     0, "program P; begin x := 1 + 2 * 3; y := -(4 + 5); end.", sink,
   )
-  let report = @ir.run_first_pass(cu)
+  let report = run_first_pass(cu)
 
   assert_true(report.folded_binary >= 2)
   assert_true(report.folded_unary >= 1)

@@ -75,14 +75,14 @@ pub fn ModuleIr::new() -> ModuleIr {
 
 ///|
 pub fn ModuleIr::mark_stage(self : ModuleIr, stage : IrStage) -> Unit {
-  if !self.stages.iter().any(s => s == stage) {
+  if !self.stages.iter().contains(stage) {
     self.stages.push(stage)
   }
 }
 
 ///|
 pub fn ModuleIr::reached(self : ModuleIr, stage : IrStage) -> Bool {
-  self.stages.iter().any(s => s == stage)
+  self.stages.iter().contains(stage)
 }
 
 ///|

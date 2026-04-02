@@ -17,25 +17,36 @@ pub fn compile_text(Int, String, @diag.DiagSink, CompileOptions) -> CompileOutpu
 
 pub fn compile_tokens(Int, Array[@lexer.SpannedToken], @diag.DiagSink, CompileOptions) -> CompileOutput
 
-pub fn emit_and_link(CompileOutput, String, String) -> BackendResult
+pub async fn emit_and_link(CompileOutput, String, String) -> CompileOutput raise BackendError
+
+pub async fn emit_and_link_with(CompileOutput, String, String, BackendToolchain) -> CompileOutput raise BackendError
 
 pub fn toolchain_plan(CompileOutput) -> ToolchainPlan?
 
+pub fn toolchain_plan_with(CompileOutput, BackendToolchain) -> ToolchainPlan?
+
 // Errors
+pub suberror BackendError {
+  BackendError(String, CompileOutput)
+}
 
 // Types and methods
-pub(all) enum BackendResult {
-  Ok(CompileOutput)
-  Err(String, CompileOutput)
+pub struct BackendToolchain {
+  assembler : String
+  linker : String
+  assemble_flags : Array[String]
+  link_flags : Array[String]
 }
+pub fn BackendToolchain::new(String, String, Array[String], Array[String]) -> Self
+pub impl Default for BackendToolchain
 
 pub struct CompileOptions {
   stop_on_error : Bool
 }
-pub fn CompileOptions::default() -> Self
 pub fn CompileOptions::new(Bool) -> Self
+pub impl Default for CompileOptions
 
-pub struct CompileOutput {
+pub(all) struct CompileOutput {
   tokens : Array[@lexer.SpannedToken]
   unit : @ast.Spanned[@ast.CompilationUnit]?
   resolver : @semantic.Resolver?

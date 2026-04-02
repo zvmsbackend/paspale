@@ -37,7 +37,7 @@ fn operand_vregs(op : String, out : Array[Int]) -> Unit {
 
 ///|
 fn classify_live(item : Tai) -> LiveInst? {
-  if item.kind != Instruction {
+  if !(item.kind is Instruction) {
     return None
   }
   let uses = []
@@ -72,9 +72,8 @@ fn collect_cross_call_vregs(list : Array[Tai]) -> Map[Int, Bool] {
   let first = {}
   let last = {}
   let call_positions = []
-  for i in 0..<list.length() {
-    let item = list[i]
-    if item.kind == Instruction && item.opcode == "call" {
+  for i, item in list {
+    if item.kind is Instruction && item.opcode == "call" {
       call_positions.push(i)
     }
     for op in item.operands {
@@ -88,9 +87,7 @@ fn collect_cross_call_vregs(list : Array[Tai]) -> Map[Int, Bool] {
   }
 
   let out = {}
-  for entry in first {
-    let v = entry.0
-    let start = entry.1
+  for v, start in first {
     let end_ = last.get_or_default(v, start)
     for cp in call_positions {
       if start < cp && cp < end_ {
@@ -112,12 +109,10 @@ fn is_callee_saved_reg(reg : String) -> Bool {
 }
 
 ///|
-fn allocatable_int_regs() -> Array[String] {
-  [
-    "eax", "ecx", "edx", "esi", "edi", "r8d", "r9d", "r10d", "r11d", "ebx", "r12d",
-    "r13d", "r14d", "r15d",
-  ]
-}
+let allocatable_int_regs : Array[String] = [
+  "eax", "ecx", "edx", "esi", "edi", "r8d", "r9d", "r10d", "r11d", "ebx", "r12d",
+  "r13d", "r14d", "r15d",
+]
 
 ///|
 fn allocate_with_call_constraints(
@@ -125,15 +120,11 @@ fn allocate_with_call_constraints(
   regs : Array[String],
   forced : Map[Int, Bool],
 ) -> (PhysicalAllocation, Int, Int) {
-  let colors = []
-  for c in plan.colors {
-    colors.push(c)
-  }
+  let colors = plan.colors.copy()
   let mut rehomes = 0
   let mut forced_spills = 0
 
-  for entry in forced {
-    let v = entry.0
+  for v, _ in forced {
     if v < 0 || v >= colors.length() {
       continue
     }
@@ -152,13 +143,9 @@ fn allocate_with_call_constraints(
       if !is_callee_saved_reg(regs[c]) {
         continue
       }
-      let mut conflict = false
-      for n in plan.adjacency[v] {
-        if colors[n] is Some(nc) && nc == c {
-          conflict = true
-          break
-        }
-      }
+      let conflict = plan.adjacency[v]
+        .iter()
+        .any(n => colors[n] is Some(nc) && nc == c)
       if !conflict {
         reassigned = Some(c)
         break
@@ -183,8 +170,8 @@ fn allocate_with_call_constraints(
   let spill_offset_of_vreg = {}
   let mut next_spill = 8
 
-  for v in 0..<colors.length() {
-    match colors[v] {
+  for v, color in colors {
+    match color {
       Some(c) if c >= 0 && c < regs.length() => reg_of_vreg[v] = regs[c]
       _ => {
         spill_offset_of_vreg[v] = next_spill
@@ -202,27 +189,22 @@ fn allocate_with_call_constraints(
 
 ///|
 fn replace_vreg_operand(op : String, alloc : PhysicalAllocation) -> String {
-  match parse_vreg(op) {
-    Some(v) =>
-      match alloc.reg_of_vreg.get(v) {
-        Some(r) => r
-        None =>
-          match alloc.spill_offset_of_vreg.get(v) {
-            Some(_) => "[__spill_v\{v}]"
-            None => op
-          }
-      }
+  guard parse_vreg(op) is Some(v) else { return op }
+  if alloc.reg_of_vreg.get(v) is Some(r) {
+    return r
+  }
+  match alloc.spill_offset_of_vreg.get(v) {
+    Some(_) => "[__spill_v\{v}]"
     None => op
   }
 }
 
 ///|
 fn spill_symbols(alloc : PhysicalAllocation) -> Array[Tai] {
-  let out = []
-  for entry in alloc.spill_offset_of_vreg {
-    out.push(Tai::new(Symbol, "__spill_v\{entry.0}", []))
-  }
-  out
+  alloc.spill_offset_of_vreg
+  .keys()
+  .map(v => Tai::new(Symbol, "__spill_v\{v}", []))
+  .collect()
 }
 
 ///|
@@ -315,10 +297,7 @@ fn rewrite_with_possible_spill(
       }
     }
     _ => {
-      let rewritten = []
-      for op in item.operands {
-        rewritten.push(replace_vreg_operand(op, alloc))
-      }
+      let rewritten = item.operands.map(op => replace_vreg_operand(op, alloc))
       out.push({ ..item, operands: rewritten })
     }
   }
@@ -329,21 +308,15 @@ fn rewrite_virtual_regs(
   list : Array[Tai],
   report : OptimizeReport,
 ) -> (Array[Tai], Array[Tai]) {
-  let insts = []
-  for item in list {
-    if classify_live(item) is Some(inst) {
-      insts.push(inst)
-    }
-  }
+  let insts = list.filter_map(classify_live)
   if insts.length() == 0 {
     return (list, [])
   }
 
-  let regs = allocatable_int_regs()
-  let plan = allocate_plan(insts, regs.length())
+  let plan = allocate_plan(insts, allocatable_int_regs.length())
   let cross_call = collect_cross_call_vregs(list)
   let (alloc, rehomes, forced_spills) = allocate_with_call_constraints(
-    plan, regs, cross_call,
+    plan, allocatable_int_regs, cross_call,
   )
   report.skipped_virtual_spills += alloc.spill_offset_of_vreg.length()
   report.allocated_virtual_regs += alloc.reg_of_vreg.length()
@@ -358,15 +331,15 @@ fn rewrite_virtual_regs(
 
 ///|
 fn is_redundant_mov(item : Tai) -> Bool {
-  item.kind == Instruction &&
+  item.kind is Instruction &&
   item.opcode == "mov" &&
-  item.operands.length() == 2 &&
-  item.operands[0] == item.operands[1]
+  item.operands is [dst, src] &&
+  dst == src
 }
 
 ///|
 fn is_empty_comment(item : Tai) -> Bool {
-  item.kind == Comment && item.opcode.trim() == ""
+  item.kind is Comment && item.opcode.trim() == ""
 }
 
 ///|

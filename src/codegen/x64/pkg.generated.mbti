@@ -49,10 +49,7 @@ pub(all) enum AsmListKind {
   DwarfInfo
 } derive(Eq, Show)
 
-pub struct LiveInst {
-  uses : Array[Int]
-  defs : Array[Int]
-}
+type LiveInst
 pub fn LiveInst::new(Array[Int], Array[Int]) -> Self
 
 pub struct OptimizeReport {

@@ -1,16 +1,16 @@
 ///|
-fn first_value(matches : @argparse.Matches, key : String) -> String? {
-  match matches.values.get(key) {
-    Some(vals) if vals.length() > 0 => Some(vals[0])
-    _ => None
-  }
+fn @argparse.Matches::first_value(
+  self : @argparse.Matches,
+  key : String,
+) -> String? {
+  self.values.get(key).bind(vals => vals.get(0))
 }
 
 ///|
 fn input_path(matches : @argparse.Matches) -> String? {
-  match first_value(matches, "file") {
+  match matches.first_value("file") {
     Some(path) => Some(path)
-    None => first_value(matches, "input")
+    None => matches.first_value("input")
   }
 }
 
@@ -18,14 +18,8 @@ fn input_path(matches : @argparse.Matches) -> String? {
 fn toolchain_from_matches(
   matches : @argparse.Matches,
 ) -> @driver.BackendToolchain {
-  let assembler = match first_value(matches, "assembler") {
-    Some(s) => s
-    None => "cc"
-  }
-  let linker = match first_value(matches, "linker") {
-    Some(s) => s
-    None => "cc"
-  }
+  let assembler = matches.first_value("assembler").unwrap_or("cc")
+  let linker = matches.first_value("linker").unwrap_or("cc")
   @driver.BackendToolchain::new(assembler, linker, ["-c", "-fno-pie"], [
     "-no-pie",
   ])
@@ -92,40 +86,38 @@ async fn main {
   let output = @driver.compile_text(file_id, source, sink, options)
 
   if sink.length() == 0 {
-    let linked = @driver.emit_and_link_with(
+    let done = @driver.emit_and_link_with(
       output,
       "_build",
       @path.Path(path).basename().to_string(),
       toolchain,
-    )
-    match linked {
-      Ok(done) => {
-        println("ok: compile/link succeeded")
-        println("stages:")
-        println(done.stages.length().to_string())
-        if done.asm_path is Some(p) {
-          println("asm: ")
-          println(p)
-        }
-        if done.object_path is Some(p) {
-          println("obj: ")
-          println(p)
-        }
-        if done.executable_path is Some(p) {
-          println("exe: ")
-          println(p)
-        }
-        if @driver.toolchain_plan_with(done, toolchain) is Some(plan) {
-          println("assemble cmd: ")
-          println(plan.assemble_cmd)
-          println("link cmd: ")
-          println(plan.link_cmd)
-        }
-      }
-      Err(msg, _) => {
+    ) catch {
+      BackendError(msg, _) => {
         println("error: backend failed")
         println(msg)
+        return
       }
+    }
+    println("ok: compile/link succeeded")
+    println("stages:")
+    println(done.stages.length().to_string())
+    if done.asm_path is Some(p) {
+      println("asm: ")
+      println(p)
+    }
+    if done.object_path is Some(p) {
+      println("obj: ")
+      println(p)
+    }
+    if done.executable_path is Some(p) {
+      println("exe: ")
+      println(p)
+    }
+    if @driver.toolchain_plan_with(done, toolchain) is Some(plan) {
+      println("assemble cmd: ")
+      println(plan.assemble_cmd)
+      println("link cmd: ")
+      println(plan.link_cmd)
     }
   } else {
     println(@diag.render_all(source_map, sink))
