@@ -231,14 +231,13 @@ fn LowerCtx::lower_expr_to_eax(
     Paren(inner) => self.lower_expr_to_eax(inner, span)
     Unary(Minus, rhs) =>
       if self.lower_expr_to_eax(rhs, span) {
+        let tmp = self.fresh_vreg()
+        self.out.emit(Tai::new(Instruction, "mov", [tmp, "0"]).with_span(span))
         self.out.emit(
-          Tai::new(Instruction, "mov", ["ebx", "0"]).with_span(span),
+          Tai::new(Instruction, "sub", [tmp, "eax"]).with_span(span),
         )
         self.out.emit(
-          Tai::new(Instruction, "sub", ["ebx", "eax"]).with_span(span),
-        )
-        self.out.emit(
-          Tai::new(Instruction, "mov", ["eax", "ebx"]).with_span(span),
+          Tai::new(Instruction, "mov", ["eax", tmp]).with_span(span),
         )
         true
       } else {
@@ -246,15 +245,16 @@ fn LowerCtx::lower_expr_to_eax(
       }
     Binary(Add, lhs, rhs) =>
       if self.lower_expr_to_eax(lhs, span) {
+        let tmp = self.fresh_vreg()
         self.out.emit(
-          Tai::new(Instruction, "mov", ["ebx", "eax"]).with_span(span),
+          Tai::new(Instruction, "mov", [tmp, "eax"]).with_span(span),
         )
         if self.lower_expr_to_eax(rhs, span) {
           self.out.emit(
-            Tai::new(Instruction, "add", ["ebx", "eax"]).with_span(span),
+            Tai::new(Instruction, "add", [tmp, "eax"]).with_span(span),
           )
           self.out.emit(
-            Tai::new(Instruction, "mov", ["eax", "ebx"]).with_span(span),
+            Tai::new(Instruction, "mov", ["eax", tmp]).with_span(span),
           )
           true
         } else {
@@ -265,15 +265,16 @@ fn LowerCtx::lower_expr_to_eax(
       }
     Binary(Sub, lhs, rhs) =>
       if self.lower_expr_to_eax(lhs, span) {
+        let tmp = self.fresh_vreg()
         self.out.emit(
-          Tai::new(Instruction, "mov", ["ebx", "eax"]).with_span(span),
+          Tai::new(Instruction, "mov", [tmp, "eax"]).with_span(span),
         )
         if self.lower_expr_to_eax(rhs, span) {
           self.out.emit(
-            Tai::new(Instruction, "sub", ["ebx", "eax"]).with_span(span),
+            Tai::new(Instruction, "sub", [tmp, "eax"]).with_span(span),
           )
           self.out.emit(
-            Tai::new(Instruction, "mov", ["eax", "ebx"]).with_span(span),
+            Tai::new(Instruction, "mov", ["eax", tmp]).with_span(span),
           )
           true
         } else {
@@ -303,12 +304,13 @@ fn LowerCtx::lower_cond_jump(
     Binary(op, lhs, rhs) =>
       if cond_jcc(op) is Some(jcc) {
         if self.lower_expr_to_eax(rhs, span) {
+          let tmp = self.fresh_vreg()
           self.out.emit(
-            Tai::new(Instruction, "mov", ["ebx", "eax"]).with_span(span),
+            Tai::new(Instruction, "mov", [tmp, "eax"]).with_span(span),
           )
           if self.lower_expr_to_eax(lhs, span) {
             self.out.emit(
-              Tai::new(Instruction, "cmp", ["eax", "ebx"]).with_span(span),
+              Tai::new(Instruction, "cmp", ["eax", tmp]).with_span(span),
             )
             self.out.emit(
               Tai::new(Instruction, jcc, [true_label]).with_span(span),
@@ -534,8 +536,9 @@ fn LowerCtx::emit_case_stmt(
   let end_label = fresh_label(self.out, ".L_case_end")
   let else_label = fresh_label(self.out, ".L_case_else")
   if self.lower_expr_to_eax(selector, s.span) {
+    let selector_tmp = self.fresh_vreg()
     self.out.emit(
-      Tai::new(Instruction, "mov", ["ebx", "eax"]).with_span(s.span),
+      Tai::new(Instruction, "mov", [selector_tmp, "eax"]).with_span(s.span),
     )
     let branch_labels = []
     for _ in branches {
@@ -549,7 +552,7 @@ fn LowerCtx::emit_case_stmt(
         match l.node {
           Literal(Int(v)) => {
             self.out.emit(
-              Tai::new(Instruction, "cmp", ["ebx", v]).with_span(l.span),
+              Tai::new(Instruction, "cmp", [selector_tmp, v]).with_span(l.span),
             )
             self.out.emit(
               Tai::new(Instruction, "je", [target]).with_span(l.span),
@@ -559,13 +562,17 @@ fn LowerCtx::emit_case_stmt(
             if int_lit(lo) is Some(lo_v) && int_lit(hi) is Some(hi_v) {
               let next_label = fresh_label(self.out, ".L_case_next")
               self.out.emit(
-                Tai::new(Instruction, "cmp", ["ebx", lo_v]).with_span(l.span),
+                Tai::new(Instruction, "cmp", [selector_tmp, lo_v]).with_span(
+                  l.span,
+                ),
               )
               self.out.emit(
                 Tai::new(Instruction, "jl", [next_label]).with_span(l.span),
               )
               self.out.emit(
-                Tai::new(Instruction, "cmp", ["ebx", hi_v]).with_span(l.span),
+                Tai::new(Instruction, "cmp", [selector_tmp, hi_v]).with_span(
+                  l.span,
+                ),
               )
               self.out.emit(
                 Tai::new(Instruction, "jle", [target]).with_span(l.span),

@@ -20,8 +20,8 @@ test "lower arithmetic literal expression to add/sub" {
   let out = @x64.lower_compilation_unit(cu)
   let text = out.render()
 
-  assert_true(text.contains("add ebx, eax"))
-  assert_true(text.contains("sub ebx, eax"))
+  assert_true(text.contains("add v"))
+  assert_true(text.contains("sub v"))
 }
 
 ///|
@@ -34,7 +34,7 @@ test "lower conditional flow to cmp and jumps" {
   let out = @x64.lower_compilation_unit(cu)
   let text = out.render()
 
-  assert_true(text.contains("cmp eax, ebx"))
+  assert_true(text.contains("cmp eax, v"))
   assert_true(text.contains("jl .L_if_then"))
   assert_true(text.contains("jmp .L_if_else"))
 }
@@ -80,10 +80,10 @@ test "lower case statement to cmp and branch labels" {
   let out = @x64.lower_compilation_unit(cu)
   let text = out.render()
 
-  assert_true(text.contains("cmp ebx, 1"))
+  assert_true(text.contains("cmp v"))
   assert_true(text.contains("je .L_case_branch"))
-  assert_true(text.contains("cmp ebx, 2"))
-  assert_true(text.contains("cmp ebx, 3"))
+  assert_true(text.contains(", 2"))
+  assert_true(text.contains(", 3"))
   assert_true(text.contains("jle .L_case_branch"))
   assert_true(text.contains(".L_case_else"))
   assert_true(text.contains(".L_case_end"))

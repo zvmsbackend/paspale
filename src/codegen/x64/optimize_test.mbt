@@ -27,7 +27,7 @@ test "optimize pass allocates simple virtual registers" {
 }
 
 ///|
-test "optimize pass skips virtual allocation when spills needed" {
+test "optimize pass rewrites virtual regs with spill fallback" {
   let input = @x64.AsmData::new("demo")
   input.emit(@x64.Tai::new(Instruction, "mov", ["v0", "1"]))
   input.emit(@x64.Tai::new(Instruction, "mov", ["v1", "2"]))
@@ -43,5 +43,6 @@ test "optimize pass skips virtual allocation when spills needed" {
   let text = optimized.render()
 
   assert_true(report.skipped_virtual_spills >= 1)
-  assert_true(text.contains("v0"))
+  assert_true(!text.contains("v0"))
+  assert_true(text.contains("[rbp-"))
 }

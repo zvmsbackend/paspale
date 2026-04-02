@@ -80,6 +80,105 @@ fn replace_vreg_operand(op : String, alloc : PhysicalAllocation) -> String {
 }
 
 ///|
+fn push_with_span(
+  out : Array[Tai],
+  base : Tai,
+  opcode : String,
+  operands : Array[String],
+) -> Unit {
+  let next = Tai::new(Instruction, opcode, operands)
+  match base.pos {
+    Some(pos) => out.push(next.with_span(pos))
+    None => out.push(next)
+  }
+}
+
+///|
+fn rewrite_with_possible_spill(
+  item : Tai,
+  alloc : PhysicalAllocation,
+  out : Array[Tai],
+) -> Unit {
+  if item.kind != Instruction {
+    out.push(item)
+    return
+  }
+  match (item.opcode, item.operands) {
+    ("mov", [dst, src]) => {
+      let d = replace_vreg_operand(dst, alloc)
+      let s = replace_vreg_operand(src, alloc)
+      if d.has_prefix("[") && s.has_prefix("[") {
+        push_with_span(out, item, "mov", ["r10d", s])
+        push_with_span(out, item, "mov", [d, "r10d"])
+      } else {
+        push_with_span(out, item, "mov", [d, s])
+      }
+    }
+    ("add", [dst, src]) | ("sub", [dst, src]) => {
+      let d = replace_vreg_operand(dst, alloc)
+      let s = replace_vreg_operand(src, alloc)
+      if d.has_prefix("[") {
+        push_with_span(out, item, "mov", ["r10d", d])
+        if s.has_prefix("[") {
+          push_with_span(out, item, "mov", ["r11d", s])
+          push_with_span(out, item, item.opcode, ["r10d", "r11d"])
+        } else {
+          push_with_span(out, item, item.opcode, ["r10d", s])
+        }
+        push_with_span(out, item, "mov", [d, "r10d"])
+      } else if s.has_prefix("[") {
+        push_with_span(out, item, "mov", ["r11d", s])
+        push_with_span(out, item, item.opcode, [d, "r11d"])
+      } else {
+        push_with_span(out, item, item.opcode, [d, s])
+      }
+    }
+    ("cmp", [lhs, rhs]) => {
+      let l = replace_vreg_operand(lhs, alloc)
+      let r = replace_vreg_operand(rhs, alloc)
+      let ll = if l.has_prefix("[") {
+        push_with_span(out, item, "mov", ["r10d", l])
+        "r10d"
+      } else {
+        l
+      }
+      let rr = if r.has_prefix("[") {
+        push_with_span(out, item, "mov", ["r11d", r])
+        "r11d"
+      } else {
+        r
+      }
+      push_with_span(out, item, "cmp", [ll, rr])
+    }
+    ("push", [src]) => {
+      let s = replace_vreg_operand(src, alloc)
+      if s.has_prefix("[") {
+        push_with_span(out, item, "mov", ["r10d", s])
+        push_with_span(out, item, "push", ["r10"])
+      } else {
+        push_with_span(out, item, "push", [s])
+      }
+    }
+    ("pop", [dst]) => {
+      let d = replace_vreg_operand(dst, alloc)
+      if d.has_prefix("[") {
+        push_with_span(out, item, "pop", ["r10"])
+        push_with_span(out, item, "mov", [d, "r10d"])
+      } else {
+        push_with_span(out, item, "pop", [d])
+      }
+    }
+    _ => {
+      let rewritten = []
+      for op in item.operands {
+        rewritten.push(replace_vreg_operand(op, alloc))
+      }
+      out.push({ ..item, operands: rewritten })
+    }
+  }
+}
+
+///|
 fn rewrite_virtual_regs(
   list : Array[Tai],
   report : OptimizeReport,
@@ -95,23 +194,11 @@ fn rewrite_virtual_regs(
   }
 
   let alloc = allocate_physical(insts, ["eax", "ebx", "ecx", "edx"])
-  if alloc.spill_offset_of_vreg.length() > 0 {
-    report.skipped_virtual_spills += alloc.spill_offset_of_vreg.length()
-    return list
-  }
-
+  report.skipped_virtual_spills += alloc.spill_offset_of_vreg.length()
   report.allocated_virtual_regs += alloc.reg_of_vreg.length()
   let out = []
   for item in list {
-    if item.kind == Instruction {
-      let rewritten = []
-      for op in item.operands {
-        rewritten.push(replace_vreg_operand(op, alloc))
-      }
-      out.push({ ..item, operands: rewritten })
-    } else {
-      out.push(item)
-    }
+    rewrite_with_possible_spill(item, alloc, out)
   }
   out
 }

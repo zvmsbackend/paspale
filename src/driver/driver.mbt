@@ -125,12 +125,16 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
     op == "ebx" ||
     op == "ecx" ||
     op == "edx" ||
+    op == "r10d" ||
+    op == "r11d" ||
     op == "rsp" ||
     op == "rbp" ||
     op == "rax" ||
     op == "rbx" ||
     op == "rcx" ||
-    op == "rdx"
+    op == "rdx" ||
+    op == "r10" ||
+    op == "r11"
   }
   fn is_int(op : String) {
     (try? @string.parse_int(op)) is Ok(_)
