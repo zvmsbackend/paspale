@@ -71,12 +71,21 @@ fn replace_vreg_operand(op : String, alloc : PhysicalAllocation) -> String {
         Some(r) => r
         None =>
           match alloc.spill_offset_of_vreg.get(v) {
-            Some(ofs) => "[rbp-\{ofs}]"
+            Some(_) => "[__spill_v\{v}]"
             None => op
           }
       }
     None => op
   }
+}
+
+///|
+fn spill_symbols(alloc : PhysicalAllocation) -> Array[Tai] {
+  let out = []
+  for entry in alloc.spill_offset_of_vreg {
+    out.push(Tai::new(Symbol, "__spill_v\{entry.0}", []))
+  }
+  out
 }
 
 ///|
@@ -182,7 +191,7 @@ fn rewrite_with_possible_spill(
 fn rewrite_virtual_regs(
   list : Array[Tai],
   report : OptimizeReport,
-) -> Array[Tai] {
+) -> (Array[Tai], Array[Tai]) {
   let insts = []
   for item in list {
     if classify_live(item) is Some(inst) {
@@ -190,7 +199,7 @@ fn rewrite_virtual_regs(
     }
   }
   if insts.length() == 0 {
-    return list
+    return (list, [])
   }
 
   let alloc = allocate_physical(insts, ["eax", "ebx", "ecx", "edx"])
@@ -200,7 +209,7 @@ fn rewrite_virtual_regs(
   for item in list {
     rewrite_with_possible_spill(item, alloc, out)
   }
-  out
+  (out, spill_symbols(alloc))
 }
 
 ///|
@@ -237,9 +246,12 @@ fn optimize_list(list : Array[Tai], report : OptimizeReport) -> Array[Tai] {
 pub fn optimize_aasm(input : AsmData) -> (AsmData, OptimizeReport) {
   let report = OptimizeReport::new()
   let out = AsmData::new(input.name)
-  let lowered_procedures = rewrite_virtual_regs(input.procedures, report)
+  let (lowered_procedures, spill_globals) = rewrite_virtual_regs(
+    input.procedures,
+    report,
+  )
   out.procedures = optimize_list(lowered_procedures, report)
-  out.globals = optimize_list(input.globals, report)
+  out.globals = optimize_list([..input.globals, ..spill_globals], report)
   out.const_data = optimize_list(input.const_data, report)
   out.imports = optimize_list(input.imports, report)
   out.exports = optimize_list(input.exports, report)

@@ -44,5 +44,7 @@ test "optimize pass rewrites virtual regs with spill fallback" {
 
   assert_true(report.skipped_virtual_spills >= 1)
   assert_true(!text.contains("v0"))
-  assert_true(text.contains("[rbp-"))
+  assert_true(text.contains("[__spill_v"))
+  assert_true(text.contains("[globals]"))
+  assert_true(text.contains("__spill_v"))
 }

@@ -217,15 +217,17 @@ fn LowerCtx::lower_expr_to_eax(
 ) -> Bool {
   match e.node {
     Literal(Int(v)) => {
-      self.out.emit(Tai::new(Instruction, "mov", ["eax", v]).with_span(span))
+      let tmp = self.fresh_vreg()
+      self.out.emit(Tai::new(Instruction, "mov", [tmp, v]).with_span(span))
+      self.out.emit(Tai::new(Instruction, "mov", ["eax", tmp]).with_span(span))
       true
     }
     Name(name) => {
+      let tmp = self.fresh_vreg()
       self.out.emit(
-        Tai::new(Instruction, "mov", ["eax", self.var_addr(name)]).with_span(
-          span,
-        ),
+        Tai::new(Instruction, "mov", [tmp, self.var_addr(name)]).with_span(span),
       )
+      self.out.emit(Tai::new(Instruction, "mov", ["eax", tmp]).with_span(span))
       true
     }
     Paren(inner) => self.lower_expr_to_eax(inner, span)
@@ -340,24 +342,23 @@ fn LowerCtx::emit_assign(
   span : @diag.Span,
 ) -> Unit {
   match (lhs.node, rhs.node) {
-    (Name(dst), Name(src)) if dst == src => {
-      self.out.emit(
-        Tai::new(Instruction, "mov", ["eax", "eax"]).with_span(span),
-      )
-      self.out.emit(
-        Tai::new(Instruction, "mov", [self.var_addr(dst), "eax"]).with_span(
-          span,
-        ),
-      )
-    }
+    (Name(dst), Name(src)) if dst == src => ()
     (Name(dst), _) =>
       if int_lit(rhs) is Some(v) {
+        let tmp = self.fresh_vreg()
+        self.out.emit(Tai::new(Instruction, "mov", [tmp, v]).with_span(span))
         self.out.emit(
-          Tai::new(Instruction, "mov", [self.var_addr(dst), v]).with_span(span),
+          Tai::new(Instruction, "mov", [self.var_addr(dst), tmp]).with_span(
+            span,
+          ),
         )
       } else if self.lower_expr_to_eax(rhs, span) {
+        let tmp = self.fresh_vreg()
         self.out.emit(
-          Tai::new(Instruction, "mov", [self.var_addr(dst), "eax"]).with_span(
+          Tai::new(Instruction, "mov", [tmp, "eax"]).with_span(span),
+        )
+        self.out.emit(
+          Tai::new(Instruction, "mov", [self.var_addr(dst), tmp]).with_span(
             span,
           ),
         )
@@ -494,8 +495,9 @@ fn LowerCtx::emit_for_stmt(
     self.emit_stmt(body)
     self.out.emit(Tai::new(Label, continue_label, []).with_span(s.span))
     if counter.node is Name(counter_name) {
+      let step_tmp = self.fresh_vreg()
       self.out.emit(
-        Tai::new(Instruction, "mov", ["eax", "[\{counter_name}]"]).with_span(
+        Tai::new(Instruction, "mov", [step_tmp, "[\{counter_name}]"]).with_span(
           s.span,
         ),
       )
@@ -506,11 +508,11 @@ fn LowerCtx::emit_for_stmt(
             To => "add"
             Downto => "sub"
           },
-          ["eax", "1"],
+          [step_tmp, "1"],
         ).with_span(s.span),
       )
       self.out.emit(
-        Tai::new(Instruction, "mov", ["[\{counter_name}]", "eax"]).with_span(
+        Tai::new(Instruction, "mov", ["[\{counter_name}]", step_tmp]).with_span(
           s.span,
         ),
       )
