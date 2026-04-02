@@ -329,10 +329,12 @@ fn run_first_pass(
   module_ir : @ir.ModuleIr,
   unit : @ast.Spanned[@ast.CompilationUnit],
   resolver : @semantic.Resolver,
-) -> Unit {
-  let report = @ir.run_first_pass(unit)
-  module_ir.set_first_pass_report(report)
+) -> @ast.Spanned[@ast.CompilationUnit] {
+  let _ = resolver
+  let result = @ir.run_first_pass_pipeline(unit)
+  module_ir.set_first_pass_report(result.report)
   module_ir.mark_stage(FirstPassed)
+  result.unit
 }
 
 ///|
@@ -341,6 +343,7 @@ fn run_second_pass(
   unit : @ast.Spanned[@ast.CompilationUnit],
   resolver : @semantic.Resolver,
 ) -> @x64.AsmData {
+  let _ = resolver
   module_ir.mark_stage(SecondPassed)
   @x64.lower_compilation_unit(unit)
 }
@@ -418,10 +421,10 @@ pub fn compile_tokens(
     }
   }
 
-  run_first_pass(module_ir, unit, resolver)
+  let first_pass_unit = run_first_pass(module_ir, unit, resolver)
   mark_stage(stages, module_ir, FirstPass)
 
-  let lowered = run_second_pass(module_ir, unit, resolver)
+  let lowered = run_second_pass(module_ir, first_pass_unit, resolver)
   mark_stage(stages, module_ir, SecondPass)
 
   let (optimized, optimize_report) = run_optimize_pass(module_ir, lowered)

@@ -52,6 +52,215 @@ fn eval_int_expr(e : @ast.Spanned[@ast.Expr]) -> Int? {
 }
 
 ///|
+fn fold_expr(
+  e : @ast.Spanned[@ast.Expr],
+  report : FirstPassReport,
+) -> @ast.Spanned[@ast.Expr] {
+  let rebuilt : @ast.Spanned[@ast.Expr] = match e.node {
+    Unary(op, rhs) =>
+      @ast.Spanned::new(Unary(op, fold_expr(rhs, report)), e.span)
+    Binary(op, lhs, rhs) =>
+      @ast.Spanned::new(
+        Binary(op, fold_expr(lhs, report), fold_expr(rhs, report)),
+        e.span,
+      )
+    Call(callee, args) =>
+      @ast.Spanned::new(
+        Call(
+          fold_expr(callee, report),
+          args.map(a => fold_expr(a, report)),
+        ),
+        e.span,
+      )
+    Index(base, idx) =>
+      @ast.Spanned::new(
+        Index(fold_expr(base, report), fold_expr(idx, report)),
+        e.span,
+      )
+    Field(base, name) =>
+      @ast.Spanned::new(Field(fold_expr(base, report), name), e.span)
+    SetLiteral(items) =>
+      @ast.Spanned::new(
+        SetLiteral(items.map(it => fold_expr(it, report))),
+        e.span,
+      )
+    Range(a, b) =>
+      @ast.Spanned::new(
+        Range(fold_expr(a, report), fold_expr(b, report)),
+        e.span,
+      )
+    Paren(inner) =>
+      @ast.Spanned::new(Paren(fold_expr(inner, report)), e.span)
+    _ => e
+  }
+
+  match rebuilt.node {
+    Unary(Plus | Minus, _) =>
+      if eval_int_expr(rebuilt) is Some(v) {
+        report.folded_unary += 1
+        @ast.Spanned::new(Literal(Int(v.to_string())), rebuilt.span)
+      } else {
+        rebuilt
+      }
+    Binary(_, _, _) =>
+      if eval_int_expr(rebuilt) is Some(v) {
+        report.folded_binary += 1
+        @ast.Spanned::new(Literal(Int(v.to_string())), rebuilt.span)
+      } else {
+        rebuilt
+      }
+    _ => rebuilt
+  }
+}
+
+///|
+fn fold_stmt(
+  s : @ast.Spanned[@ast.Stmt],
+  report : FirstPassReport,
+) -> @ast.Spanned[@ast.Stmt] {
+  let node : @ast.Stmt = match s.node {
+    Compound(stmts) => Compound(stmts.map(st => fold_stmt(st, report)))
+    Assign(lhs, rhs) =>
+      Assign(fold_expr(lhs, report), fold_expr(rhs, report))
+    Call(callee, args) =>
+      Call(fold_expr(callee, report), args.map(a => fold_expr(a, report)))
+    If(cond, then_s, else_s) =>
+      If(
+        fold_expr(cond, report),
+        fold_stmt(then_s, report),
+        else_s.map(es => fold_stmt(es, report)),
+      )
+    Case(cond, branches, else_s) =>
+      Case(
+        fold_expr(cond, report),
+        branches.map(b => {
+          @ast.Spanned::new(
+            {
+              labels: b.node.labels.map(lbl => fold_expr(lbl, report)),
+              body: fold_stmt(b.node.body, report),
+            },
+            b.span,
+          )
+        }),
+        else_s.map(es => fold_stmt(es, report)),
+      )
+    While(cond, body) =>
+      While(fold_expr(cond, report), fold_stmt(body, report))
+    RepeatUntil(stmts, cond) =>
+      RepeatUntil(
+        stmts.map(st => fold_stmt(st, report)),
+        fold_expr(cond, report),
+      )
+    For(loop_var, from_, dir, to_, body) =>
+      For(
+        fold_expr(loop_var, report),
+        fold_expr(from_, report),
+        dir,
+        fold_expr(to_, report),
+        fold_stmt(body, report),
+      )
+    With(items, body) =>
+      With(items.map(it => fold_expr(it, report)), fold_stmt(body, report))
+    TryExcept(try_s, handlers, else_s) =>
+      TryExcept(
+        fold_stmt(try_s, report),
+        handlers.map(h => {
+          @ast.Spanned::new(
+            {
+              name: h.node.name,
+              ty: h.node.ty,
+              body: fold_stmt(h.node.body, report),
+            },
+            h.span,
+          )
+        }),
+        else_s.map(es => fold_stmt(es, report)),
+      )
+    TryFinally(try_s, finally_s) =>
+      TryFinally(fold_stmt(try_s, report), fold_stmt(finally_s, report))
+    Raise(Some(e)) => Raise(Some(fold_expr(e, report)))
+    Raise(None) => Raise(None)
+    Label(name, body) => Label(name, fold_stmt(body, report))
+    Exit(Some(e)) => Exit(Some(fold_expr(e, report)))
+    Exit(None) => Exit(None)
+    _ => s.node
+  }
+  @ast.Spanned::new(node, s.span)
+}
+
+///|
+fn fold_decl(
+  d : @ast.Spanned[@ast.Decl],
+  report : FirstPassReport,
+) -> @ast.Spanned[@ast.Decl] {
+  let node : @ast.Decl = match d.node {
+    ConstDecl(name, expr) => ConstDecl(name, fold_expr(expr, report))
+    VarDecl(names, ty, Some(init)) =>
+      VarDecl(names, ty, Some(fold_expr(init, report)))
+    VarDecl(names, ty, None) => VarDecl(names, ty, None)
+    ProcDecl(pd) =>
+      ProcDecl({ ..pd, body: pd.body.map(b => fold_block(b, report)) })
+    FuncDecl(fd) =>
+      FuncDecl({ ..fd, body: fd.body.map(b => fold_block(b, report)) })
+    _ => d.node
+  }
+  @ast.Spanned::new(node, d.span)
+}
+
+///|
+fn fold_block(
+  b : @ast.Spanned[@ast.Block],
+  report : FirstPassReport,
+) -> @ast.Spanned[@ast.Block] {
+  @ast.Spanned::new(
+    {
+      decls: b.node.decls.map(d => fold_decl(d, report)),
+      stmts: b.node.stmts.map(s => fold_stmt(s, report)),
+    },
+    b.span,
+  )
+}
+
+///|
+pub fn run_first_pass_pipeline(
+  unit : @ast.Spanned[@ast.CompilationUnit],
+) -> FirstPassResult {
+  let report = FirstPassReport::new()
+  let folded_unit : @ast.Spanned[@ast.CompilationUnit] = match unit.node {
+    ProgramUnit(p) =>
+      @ast.Spanned::new(
+        ProgramUnit({
+          ..p,
+          block: fold_block(p.block, report),
+          finalization: p.finalization.map(s => fold_stmt(s, report)),
+        }),
+        unit.span,
+      )
+    UnitModule(u) =>
+      @ast.Spanned::new(
+        UnitModule({
+          ..u,
+          interface_decls: u.interface_decls.map(d => fold_decl(d, report)),
+          implementation_block: fold_block(u.implementation_block, report),
+          initialization: u.initialization.map(s => fold_stmt(s, report)),
+          finalization: u.finalization.map(s => fold_stmt(s, report)),
+        }),
+        unit.span,
+      )
+    LibraryUnit(l) =>
+      @ast.Spanned::new(
+        LibraryUnit({
+          ..l,
+          block: fold_block(l.block, report),
+          finalization: l.finalization.map(s => fold_stmt(s, report)),
+        }),
+        unit.span,
+      )
+  }
+  { unit: folded_unit, report }
+}
+
+///|
 fn visit_expr(e : @ast.Spanned[@ast.Expr], report : FirstPassReport) -> Unit {
   match e.node {
     Unary(Plus | Minus, rhs) => {
@@ -198,32 +407,5 @@ fn visit_block(b : @ast.Spanned[@ast.Block], report : FirstPassReport) -> Unit {
 pub fn run_first_pass(
   unit : @ast.Spanned[@ast.CompilationUnit],
 ) -> FirstPassReport {
-  let report = FirstPassReport::new()
-  match unit.node {
-    ProgramUnit(p) => {
-      visit_block(p.block, report)
-      for s in p.finalization {
-        visit_stmt(s, report)
-      }
-    }
-    UnitModule(u) => {
-      for d in u.interface_decls {
-        visit_decl(d, report)
-      }
-      visit_block(u.implementation_block, report)
-      for s in u.initialization {
-        visit_stmt(s, report)
-      }
-      for s in u.finalization {
-        visit_stmt(s, report)
-      }
-    }
-    LibraryUnit(l) => {
-      visit_block(l.block, report)
-      for s in l.finalization {
-        visit_stmt(s, report)
-      }
-    }
-  }
-  report
+  run_first_pass_pipeline(unit).report
 }

@@ -102,6 +102,12 @@ pub struct FirstPassReport {
 }
 
 ///|
+pub struct FirstPassResult {
+  unit : @ast.Spanned[@ast.CompilationUnit]
+  report : FirstPassReport
+}
+
+///|
 pub fn FirstPassReport::new() -> FirstPassReport {
   { folded_unary: 0, folded_binary: 0 }
 }

@@ -43,3 +43,19 @@ test "first pass reports foldable integer expressions" {
   assert_true(report.folded_binary >= 2)
   assert_true(report.folded_unary >= 1)
 }
+
+///|
+test "first pass pipeline rewrites folded constants" {
+  let sink = @diag.DiagSink::new()
+  let cu = @parser.parse_text(0, "program P; begin x := 1 + 2; end.", sink)
+  let result = run_first_pass_pipeline(cu)
+
+  guard result.unit.node is ProgramUnit(p) else {
+    fail("expected program unit")
+  }
+  guard p.block.node.stmts[0].node is Assign(_, rhs) else {
+    fail("expected assignment")
+  }
+  guard rhs.node is Literal(Int(v)) else { fail("expected folded int literal") }
+  assert_eq(v, "3")
+}
