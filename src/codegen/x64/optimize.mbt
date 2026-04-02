@@ -99,29 +99,80 @@ fn collect_cross_call_vregs(list : Array[Tai]) -> Map[Int, Bool] {
 }
 
 ///|
-fn apply_forced_spills(
-  alloc : PhysicalAllocation,
+fn is_callee_saved_reg(reg : String) -> Bool {
+  reg == "ebx" ||
+  reg == "r12d" ||
+  reg == "r13d" ||
+  reg == "r14d" ||
+  reg == "r15d"
+}
+
+///|
+fn allocatable_int_regs() -> Array[String] {
+  [
+    "eax", "ecx", "edx", "esi", "edi", "r8d", "r9d", "r10d", "r11d", "ebx", "r12d",
+    "r13d", "r14d", "r15d",
+  ]
+}
+
+///|
+fn allocate_with_call_constraints(
+  plan : AllocationPlan,
+  regs : Array[String],
   forced : Map[Int, Bool],
 ) -> PhysicalAllocation {
+  let colors = []
+  for c in plan.colors {
+    colors.push(c)
+  }
+
+  for entry in forced {
+    let v = entry.0
+    if v < 0 || v >= colors.length() {
+      continue
+    }
+    let mut keep = false
+    if colors[v] is Some(c) {
+      if c >= 0 && c < regs.length() && is_callee_saved_reg(regs[c]) {
+        keep = true
+      }
+    }
+    if keep {
+      continue
+    }
+
+    let mut reassigned : Int? = None
+    for c in 0..<regs.length() {
+      if !is_callee_saved_reg(regs[c]) {
+        continue
+      }
+      let mut conflict = false
+      for n in plan.adjacency[v] {
+        if colors[n] is Some(nc) && nc == c {
+          conflict = true
+          break
+        }
+      }
+      if !conflict {
+        reassigned = Some(c)
+        break
+      }
+    }
+
+    colors[v] = reassigned
+  }
+
   let reg_of_vreg = {}
   let spill_offset_of_vreg = {}
   let mut next_spill = 8
 
-  for entry in alloc.spill_offset_of_vreg {
-    spill_offset_of_vreg[entry.0] = next_spill
-    next_spill = next_spill + 8
-  }
-
-  for entry in alloc.reg_of_vreg {
-    let v = entry.0
-    let r = entry.1
-    if forced.contains(v) {
-      if !spill_offset_of_vreg.contains(v) {
+  for v in 0..<colors.length() {
+    match colors[v] {
+      Some(c) if c >= 0 && c < regs.length() => reg_of_vreg[v] = regs[c]
+      _ => {
         spill_offset_of_vreg[v] = next_spill
         next_spill = next_spill + 8
       }
-    } else {
-      reg_of_vreg[v] = r
     }
   }
 
@@ -267,9 +318,10 @@ fn rewrite_virtual_regs(
     return (list, [])
   }
 
-  let alloc0 = allocate_physical(insts, ["eax", "ebx", "ecx", "edx"])
+  let regs = allocatable_int_regs()
+  let plan = allocate_plan(insts, regs.length())
   let cross_call = collect_cross_call_vregs(list)
-  let alloc = apply_forced_spills(alloc0, cross_call)
+  let alloc = allocate_with_call_constraints(plan, regs, cross_call)
   report.skipped_virtual_spills += alloc.spill_offset_of_vreg.length()
   report.allocated_virtual_regs += alloc.reg_of_vreg.length()
   let out = []

@@ -119,6 +119,11 @@ fn int_arg_regs() -> Array[String] {
 }
 
 ///|
+fn callee_saved_regs() -> Array[String] {
+  ["rbx", "r12", "r13", "r14", "r15"]
+}
+
+///|
 fn local_stack_size(offsets : Map[String, Int]) -> Int {
   offsets.length() * 8
 }
@@ -836,6 +841,10 @@ fn LowerCtx::emit_global_decl(
             ),
           )
         }
+        let saved = callee_saved_regs()
+        for r in saved {
+          self.out.emit(Tai::new(Instruction, "push", [r]).with_span(d.span))
+        }
         for i in 0..<reg_param_count {
           let pname = all_params[i]
           if local_and_reg_params.get(pname) is Some(ofs) {
@@ -855,6 +864,13 @@ fn LowerCtx::emit_global_decl(
         )
         nested.emit_block(body)
         self.out.emit(Tai::new(Label, exit_label, []).with_span(d.span))
+        for i in 0..<saved.length() {
+          self.out.emit(
+            Tai::new(Instruction, "pop", [saved[saved.length() - 1 - i]]).with_span(
+              d.span,
+            ),
+          )
+        }
         self.out.emit(
           Tai::new(Instruction, "mov", ["rsp", "rbp"]).with_span(d.span),
         )
@@ -900,6 +916,10 @@ fn LowerCtx::emit_global_decl(
             ),
           )
         }
+        let saved = callee_saved_regs()
+        for r in saved {
+          self.out.emit(Tai::new(Instruction, "push", [r]).with_span(d.span))
+        }
         for i in 0..<reg_param_count {
           let pname = all_params[i]
           if local_and_reg_params.get(pname) is Some(ofs) {
@@ -919,6 +939,13 @@ fn LowerCtx::emit_global_decl(
         )
         nested.emit_block(body)
         self.out.emit(Tai::new(Label, exit_label, []).with_span(d.span))
+        for i in 0..<saved.length() {
+          self.out.emit(
+            Tai::new(Instruction, "pop", [saved[saved.length() - 1 - i]]).with_span(
+              d.span,
+            ),
+          )
+        }
         self.out.emit(
           Tai::new(Instruction, "mov", ["eax", "[rbp-\{return_slot_offset}]"]).with_span(
             d.span,
@@ -976,6 +1003,10 @@ pub fn lower_compilation_unit(
   out.switch(Procedures)
   out.emit(Tai::new(Section, ".text", []).with_span(cu.span))
   out.emit(Tai::new(Label, "main", []).with_span(cu.span))
+  let main_saved = callee_saved_regs()
+  for r in main_saved {
+    out.emit(Tai::new(Instruction, "push", [r]).with_span(cu.span))
+  }
 
   match cu.node {
     ProgramUnit(p) => {
@@ -1001,6 +1032,13 @@ pub fn lower_compilation_unit(
     }
   }
 
+  for i in 0..<main_saved.length() {
+    out.emit(
+      Tai::new(Instruction, "pop", [main_saved[main_saved.length() - 1 - i]]).with_span(
+        cu.span,
+      ),
+    )
+  }
   out.emit(Tai::new(Instruction, "ret", []).with_span(cu.span))
 
   out

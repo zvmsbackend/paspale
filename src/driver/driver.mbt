@@ -129,6 +129,10 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
     op == "esi" ||
     op == "r8d" ||
     op == "r9d" ||
+    op == "r12d" ||
+    op == "r13d" ||
+    op == "r14d" ||
+    op == "r15d" ||
     op == "r10d" ||
     op == "r11d" ||
     op == "rsp" ||
@@ -141,6 +145,10 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
     op == "rsi" ||
     op == "r8" ||
     op == "r9" ||
+    op == "r12" ||
+    op == "r13" ||
+    op == "r14" ||
+    op == "r15" ||
     op == "r10" ||
     op == "r11"
   }
