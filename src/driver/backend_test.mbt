@@ -46,3 +46,64 @@ async test "backend emit_and_link writes artifacts and stages" {
   assert_true(plan.assemble_cmd.contains("-fno-pie"))
   assert_true(plan.link_cmd.contains("-no-pie"))
 }
+
+///|
+async test "backend emit_and_link fails without aasm output" {
+  let empty_output : CompileOutput = {
+    tokens: [],
+    unit: None,
+    resolver: None,
+    ir: @ir.ModuleIr::new(),
+    aasm_output: None,
+    optimize_report: None,
+    asm_path: None,
+    object_path: None,
+    executable_path: None,
+    stages: [],
+  }
+
+  let mut got_error = false
+  ignore(
+    emit_and_link(empty_output, "_build", "missing_aasm") catch {
+      BackendError(msg, out) => {
+        assert_true(msg.contains("missing AASM output"))
+        got_error = true
+        out
+      }
+    },
+  )
+  assert_true(got_error)
+}
+
+///|
+async test "backend emit_and_link reports assembler spawn failure" {
+  let sink = @diag.DiagSink::new()
+  let compiled = compile_text(
+    0,
+    "program P; begin end.",
+    sink,
+    CompileOptions::default(),
+  )
+  assert_eq(sink.length(), 0)
+
+  let bad_toolchain = BackendToolchain::new(
+    "definitely-not-a-real-assembler-binary",
+    "cc",
+    ["-c", "-fno-pie"],
+    ["-no-pie"],
+  )
+
+  let mut got_error = false
+  ignore(
+    emit_and_link_with(
+      compiled, "_build/driver_backend_test", "bad_toolchain", bad_toolchain,
+    ) catch {
+      BackendError(msg, out) => {
+        assert_true(msg.contains("failed to spawn assembler process"))
+        got_error = true
+        out
+      }
+    },
+  )
+  assert_true(got_error)
+}
