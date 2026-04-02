@@ -58,6 +58,8 @@ pub fn LiveInst::new(Array[Int], Array[Int]) -> Self
 pub struct OptimizeReport {
   mut removed_redundant_mov : Int
   mut removed_empty_comment : Int
+  mut allocated_virtual_regs : Int
+  mut skipped_virtual_spills : Int
 }
 pub fn OptimizeReport::new() -> Self
 

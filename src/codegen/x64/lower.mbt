@@ -109,6 +109,7 @@ priv struct LowerCtx {
   out : AsmData
   break_labels : Array[String]
   continue_labels : Array[String]
+  mut next_vreg : Int
   in_callable : Bool
   exit_label : String?
   local_offsets : Map[String, Int]
@@ -121,6 +122,7 @@ fn LowerCtx::new(out : AsmData) -> LowerCtx {
     out,
     break_labels: [],
     continue_labels: [],
+    next_vreg: 0,
     in_callable: false,
     exit_label: None,
     local_offsets: {},
@@ -139,11 +141,19 @@ fn LowerCtx::for_callable(
     out,
     break_labels: [],
     continue_labels: [],
+    next_vreg: 0,
     in_callable: true,
     exit_label: Some(exit_label),
     local_offsets,
     param_offsets,
   }
+}
+
+///|
+fn LowerCtx::fresh_vreg(self : LowerCtx) -> String {
+  let name = "v\{self.next_vreg}"
+  self.next_vreg = self.next_vreg + 1
+  name
 }
 
 ///|
@@ -169,7 +179,13 @@ fn LowerCtx::emit_named_call(
   for i in 0..<args.length() {
     let arg = args[args.length() - 1 - i]
     if self.lower_expr_to_eax(arg, arg.span) {
-      self.out.emit(Tai::new(Instruction, "push", ["eax"]).with_span(arg.span))
+      let arg_reg = self.fresh_vreg()
+      self.out.emit(
+        Tai::new(Instruction, "mov", [arg_reg, "eax"]).with_span(arg.span),
+      )
+      self.out.emit(
+        Tai::new(Instruction, "push", [arg_reg]).with_span(arg.span),
+      )
       pushed = pushed + 1
     } else {
       if pushed > 0 {

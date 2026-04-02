@@ -132,7 +132,7 @@ test "lower call passes args via stack and cleans caller stack" {
   let out = @x64.lower_compilation_unit(cu)
   let text = out.render()
 
-  assert_true(text.contains("push eax"))
+  assert_true(text.contains("push v"))
   assert_true(text.contains("call Foo"))
   assert_true(text.contains("add rsp, 16"))
 }

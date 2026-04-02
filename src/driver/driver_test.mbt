@@ -83,3 +83,20 @@ test "toolchain plan supports custom assembler and linker" {
   assert_true(plan.link_cmd.contains("ld"))
   assert_true(plan.link_cmd.contains("elf_x86_64"))
 }
+
+///|
+test "driver optimize pass allocates virtual call argument registers" {
+  let sink = @diag.DiagSink::new()
+  let output = @driver.compile_text(
+    0,
+    "program P; procedure Foo(a, b: integer); begin end; begin Foo(1, 2); end.",
+    sink,
+    @driver.CompileOptions::default(),
+  )
+
+  assert_false(sink.has_error())
+  guard output.optimize_report is Some(report) else {
+    fail("expected optimize report")
+  }
+  assert_true(report.allocated_virtual_regs >= 1)
+}
