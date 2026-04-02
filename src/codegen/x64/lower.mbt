@@ -86,17 +86,36 @@ fn collect_local_offsets(block : @ast.Spanned[@ast.Block]) -> Map[String, Int] {
 fn collect_param_offsets(
   params : Array[@ast.Spanned[@ast.ParamDecl]],
 ) -> Map[String, Int] {
+  let regs = int_arg_regs()
+  let names = flatten_param_names(params)
   let offsets = {}
   let mut next = 16
-  for p in params {
-    for name in p.node.names {
-      if !offsets.contains(name) {
-        offsets.set(name, next)
-        next = next + 8
-      }
+  for i in regs.length()..<names.length() {
+    let name = names[i]
+    if !offsets.contains(name) {
+      offsets.set(name, next)
+      next = next + 8
     }
   }
   offsets
+}
+
+///|
+fn flatten_param_names(
+  params : Array[@ast.Spanned[@ast.ParamDecl]],
+) -> Array[String] {
+  let names = []
+  for p in params {
+    for name in p.node.names {
+      names.push(name)
+    }
+  }
+  names
+}
+
+///|
+fn int_arg_regs() -> Array[String] {
+  ["edi", "esi", "edx", "ecx", "r8d", "r9d"]
 }
 
 ///|
@@ -179,29 +198,41 @@ fn LowerCtx::emit_named_call(
   args : Array[@ast.Spanned[@ast.Expr]],
   span : @diag.Span,
 ) -> Bool {
-  let mut pushed = 0
-  for i in 0..<args.length() {
-    let arg = args[args.length() - 1 - i]
+  let arg_regs = int_arg_regs()
+  let arg_tmps = []
+  for arg in args {
     if self.lower_expr_to_eax(arg, arg.span) {
       let arg_reg = self.fresh_vreg()
       self.out.emit(
         Tai::new(Instruction, "mov", [arg_reg, "eax"]).with_span(arg.span),
       )
-      self.out.emit(
-        Tai::new(Instruction, "push", [arg_reg]).with_span(arg.span),
-      )
-      pushed = pushed + 1
+      arg_tmps.push(arg_reg)
     } else {
-      if pushed > 0 {
-        self.out.emit(
-          Tai::new(Instruction, "add", ["rsp", (pushed * 8).to_string()]).with_span(
-            span,
-          ),
-        )
-      }
       return false
     }
   }
+
+  let reg_count = if arg_tmps.length() < arg_regs.length() {
+    arg_tmps.length()
+  } else {
+    arg_regs.length()
+  }
+
+  let mut pushed = 0
+  for i in reg_count..<arg_tmps.length() {
+    let idx = arg_tmps.length() - 1 - (i - reg_count)
+    self.out.emit(
+      Tai::new(Instruction, "push", [arg_tmps[idx]]).with_span(span),
+    )
+    pushed = pushed + 1
+  }
+
+  for i in 0..<reg_count {
+    self.out.emit(
+      Tai::new(Instruction, "mov", [arg_regs[i], arg_tmps[i]]).with_span(span),
+    )
+  }
+
   self.out.emit(Tai::new(Instruction, "call", [name]).with_span(span))
   if pushed > 0 {
     self.out.emit(
@@ -771,8 +802,27 @@ fn LowerCtx::emit_global_decl(
       if proc_decl.body is Some(body) {
         let exit_label = fresh_label(self.out, ".L_proc_exit")
         let offsets = collect_local_offsets(body)
+        let all_params = flatten_param_names(proc_decl.params)
+        let arg_regs = int_arg_regs()
+        let reg_param_count = if all_params.length() < arg_regs.length() {
+          all_params.length()
+        } else {
+          arg_regs.length()
+        }
+        let local_and_reg_params = {}
+        for entry in offsets {
+          local_and_reg_params[entry.0] = entry.1
+        }
+        let mut next_local = local_stack_size(offsets) + 8
+        for i in 0..<reg_param_count {
+          let pname = all_params[i]
+          if !local_and_reg_params.contains(pname) {
+            local_and_reg_params[pname] = next_local
+            next_local = next_local + 8
+          }
+        }
         let param_offsets = collect_param_offsets(proc_decl.params)
-        let stack_size = local_stack_size(offsets)
+        let stack_size = next_local - 8
         self.out.switch(Procedures)
         self.out.emit(Tai::new(Label, proc_decl.name, []).with_span(d.span))
         self.out.emit(Tai::new(Instruction, "push", ["rbp"]).with_span(d.span))
@@ -786,11 +836,21 @@ fn LowerCtx::emit_global_decl(
             ),
           )
         }
+        for i in 0..<reg_param_count {
+          let pname = all_params[i]
+          if local_and_reg_params.get(pname) is Some(ofs) {
+            self.out.emit(
+              Tai::new(Instruction, "mov", ["[rbp-\{ofs}]", arg_regs[i]]).with_span(
+                d.span,
+              ),
+            )
+          }
+        }
         let nested = LowerCtx::for_callable(
           self.out,
           exit_label,
           None,
-          offsets,
+          local_and_reg_params,
           param_offsets,
         )
         nested.emit_block(body)
@@ -805,8 +865,27 @@ fn LowerCtx::emit_global_decl(
       if func_decl.body is Some(body) {
         let exit_label = fresh_label(self.out, ".L_func_exit")
         let offsets = collect_local_offsets(body)
+        let all_params = flatten_param_names(func_decl.params)
+        let arg_regs = int_arg_regs()
+        let reg_param_count = if all_params.length() < arg_regs.length() {
+          all_params.length()
+        } else {
+          arg_regs.length()
+        }
+        let local_and_reg_params = {}
+        for entry in offsets {
+          local_and_reg_params[entry.0] = entry.1
+        }
+        let mut next_local = local_stack_size(offsets) + 8
+        for i in 0..<reg_param_count {
+          let pname = all_params[i]
+          if !local_and_reg_params.contains(pname) {
+            local_and_reg_params[pname] = next_local
+            next_local = next_local + 8
+          }
+        }
         let param_offsets = collect_param_offsets(func_decl.params)
-        let return_slot_offset = local_stack_size(offsets) + 8
+        let return_slot_offset = next_local
         let stack_size = return_slot_offset
         self.out.switch(Procedures)
         self.out.emit(Tai::new(Label, func_decl.name, []).with_span(d.span))
@@ -821,11 +900,21 @@ fn LowerCtx::emit_global_decl(
             ),
           )
         }
+        for i in 0..<reg_param_count {
+          let pname = all_params[i]
+          if local_and_reg_params.get(pname) is Some(ofs) {
+            self.out.emit(
+              Tai::new(Instruction, "mov", ["[rbp-\{ofs}]", arg_regs[i]]).with_span(
+                d.span,
+              ),
+            )
+          }
+        }
         let nested = LowerCtx::for_callable(
           self.out,
           exit_label,
           Some(return_slot_offset),
-          offsets,
+          local_and_reg_params,
           param_offsets,
         )
         nested.emit_block(body)

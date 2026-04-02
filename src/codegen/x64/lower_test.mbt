@@ -133,9 +133,10 @@ test "lower call passes args via stack and cleans caller stack" {
   let out = @x64.lower_compilation_unit(cu)
   let text = out.render()
 
-  assert_true(text.contains("push v"))
+  assert_true(text.contains("mov edi, v"))
+  assert_true(text.contains("mov esi, v"))
   assert_true(text.contains("call Foo"))
-  assert_true(text.contains("add rsp, 16"))
+  assert_true(!text.contains("add rsp, 16"))
 }
 
 ///|
@@ -148,5 +149,25 @@ test "lower callable reads parameter from rbp positive offset" {
   let out = @x64.lower_compilation_unit(cu)
   let text = out.render()
 
-  assert_true(text.contains("[rbp+16]"))
+  assert_true(text.contains("[rbp-16]"))
+}
+
+///|
+test "lower call spills extra args to stack after register args" {
+  let sink = @diag.DiagSink::new()
+  let cu = @parser.parse_text(
+    0, "program P; procedure Foo(a,b,c,d,e,f,g: integer); begin end; begin Foo(1,2,3,4,5,6,7); end.",
+    sink,
+  )
+  let out = @x64.lower_compilation_unit(cu)
+  let text = out.render()
+
+  assert_true(text.contains("mov edi, v"))
+  assert_true(text.contains("mov esi, v"))
+  assert_true(text.contains("mov edx, v"))
+  assert_true(text.contains("mov ecx, v"))
+  assert_true(text.contains("mov r8d, v"))
+  assert_true(text.contains("mov r9d, v"))
+  assert_true(text.contains("push v"))
+  assert_true(text.contains("add rsp, 8"))
 }

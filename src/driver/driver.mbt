@@ -125,6 +125,10 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
     op == "ebx" ||
     op == "ecx" ||
     op == "edx" ||
+    op == "edi" ||
+    op == "esi" ||
+    op == "r8d" ||
+    op == "r9d" ||
     op == "r10d" ||
     op == "r11d" ||
     op == "rsp" ||
@@ -133,6 +137,10 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
     op == "rbx" ||
     op == "rcx" ||
     op == "rdx" ||
+    op == "rdi" ||
+    op == "rsi" ||
+    op == "r8" ||
+    op == "r9" ||
     op == "r10" ||
     op == "r11"
   }
