@@ -103,3 +103,22 @@ test "lower procedure declaration and call" {
   assert_true(text.contains("Foo"))
   assert_true(text.contains("call Foo"))
 }
+
+///|
+test "lower callable uses stack locals and unified exit label" {
+  let sink = @diag.DiagSink::new()
+  let cu = @parser.parse_text(
+    0,
+    "program P; function Foo: integer; var x: integer; begin x := 7; exit(x); end; begin end.",
+    sink,
+  )
+  let out = @x64.lower_compilation_unit(cu)
+  let text = out.render()
+
+  assert_true(text.contains("push rbp"))
+  assert_true(text.contains("sub rsp, 8"))
+  assert_true(text.contains("mov [rbp-8], 7"))
+  assert_true(text.contains("jmp .L_func_exit"))
+  assert_true(text.contains("mov rsp, rbp"))
+  assert_true(text.contains("pop rbp"))
+}

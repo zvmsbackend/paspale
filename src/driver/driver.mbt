@@ -125,6 +125,8 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
     op == "ebx" ||
     op == "ecx" ||
     op == "edx" ||
+    op == "rsp" ||
+    op == "rbp" ||
     op == "rax" ||
     op == "rbx" ||
     op == "rcx" ||
@@ -205,6 +207,14 @@ fn render_linkable_asm(unit_name : String, aasm : @x64.AsmData) -> String {
         out.write_string(label)
         out.write_string("\n")
       }
+      { kind: Instruction, opcode, operands: [op0], .. } =>
+        if (opcode == "push" || opcode == "pop") && is_reg(op0) {
+          out.write_string("  ")
+          out.write_string(opcode)
+          out.write_string(" ")
+          out.write_string(op0)
+          out.write_string("\n")
+        }
       { kind: Instruction, opcode: "call", operands: [callee], .. } => {
         out.write_string("  call ")
         out.write_string(callee)
